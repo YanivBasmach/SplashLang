@@ -68,7 +68,7 @@ var StringToken = /** @class */ (function (_super) {
         return _this;
     }
     StringToken.prototype.toString = function () {
-        return 'string:' + this.segments + '(' + TextRange.toString(this.range) + ')';
+        return 'string:' + this.segments.join('') + '(' + TextRange.toString(this.range) + ')';
     };
     return StringToken;
 }(Token));

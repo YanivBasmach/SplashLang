@@ -34,6 +34,8 @@ export namespace TextRange {
         return {start: pos, end: {line: pos.line, column: pos.column + count}}
     }
 
+    export const end: TextRange = {start: {line: -1, column: 0}, end: {line: -1, column: 0}}
+
 }
 
 export class Token {
@@ -41,6 +43,8 @@ export class Token {
     static invalid(range: TextRange) {
         return new Token(TokenType.invalid, "", range)
     }
+
+    static EOF = Token.invalid(TextRange.end)
 
     constructor(public type: TokenType, public value: any, public range: TextRange) {
 
@@ -61,7 +65,7 @@ export class StringToken extends Token {
     }
 
     toString() {
-        return 'string:' + this.segments + '(' + TextRange.toString(this.range) + ')'
+        return 'string:' + this.segments.join('') + '(' + TextRange.toString(this.range) + ')'
     }
 
 }
@@ -115,8 +119,8 @@ export class Tokenizer {
 
     }
 
-    next(): Token | undefined {
-        if (!this.canRead()) return
+    next(): Token {
+        if (!this.canRead()) Token.EOF
         let start: Position = {line: this.line,column: this.column}
         let c = this.nextChar()
         
@@ -176,7 +180,7 @@ export class Tokenizer {
                 segments.push(current)
                 let tok = this.next()
                 let stack = 0;
-                while (tok && tok.isValid() && (stack > 0 || tok.value != '}')) {
+                while (tok.isValid() && (stack > 0 || tok.value != '}')) {
                     (current as ExpressionSegment).tokens.push(tok)
                     if (tok.value == '{') stack++
                     else if (tok.value == '}') stack--
