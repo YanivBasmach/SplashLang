@@ -24,12 +24,13 @@ export abstract class Statement extends ASTNode {
 }
 
 export class CodeBlock extends Statement {
-
+    statements: Statement[] = []
 }
 
 export class MainBlock extends CodeBlock {
-    constructor(label: TextRange) {
+    constructor(label: TextRange, statements: Statement[]) {
         super("main",label)
+        this.statements = statements
     }
 }
 

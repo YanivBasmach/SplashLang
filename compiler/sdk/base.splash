@@ -1,0 +1,40 @@
+
+
+function print(object... msg) {
+    Process.stdout.write(msg[].toString().join(' '))
+}
+
+function readString(string? msg) {
+    if (msg) {
+        print(msg)
+    }
+    return Process.stdin.readLine()
+}
+
+native function randomHashCode()
+
+class object {
+
+    readonly int hashCode
+
+    constructor() {
+        this.hashCode = randomHashCode()
+    }
+
+    operator boolean equals(this other) {
+        return this.hashCode == other.hashCode
+    }
+
+    operator string plus(string str) {
+        return "{this}{str}"
+    }
+
+    string toString() {
+        return "{this.class.name}({this.hashCode})
+    }
+    
+    native accessor object get(string field)
+
+    native accessor object set(string field, object value)
+
+}

@@ -1,13 +1,13 @@
 import {Tokenizer} from './tokenizer'
 import * as fs from 'fs'
+import { Parser } from './parser'
 
-const input = fs.readFileSync('./test.splash').toString('utf-8')
+const file = './test.splash'
+
+const input = fs.readFileSync(file).toString('utf-8')
 
 let tokenizer = new Tokenizer(input)
 
-let tokens = []
-while (tokenizer.canRead()) {
-    tokens.push(tokenizer.next())
-}
+let parser = new Parser(file, tokenizer)
 
-console.log(tokens + "")
+let root = parser.parseFile()
