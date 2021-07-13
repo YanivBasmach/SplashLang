@@ -68,15 +68,21 @@ export class UnaryExpression extends Expression {
     }
 }
 
-export class Assignment extends Statement {
-    constructor(public variable: AssignableExpression, opRange: TextRange, public op: AssignmentOperator, public expression: Expression) {
-        super("assignment",opRange)
+export class LiteralExpression extends Expression {
+    constructor(public token: Token) {
+        super('literal_expression')
     }
 }
 
-export class AssignableExpression extends ASTNode {
-    constructor(public assignable: AssignableAccessNode, public chain?: AccessNode) {
-        super("assignable_expression")
+export class InvalidExpression extends Expression {
+    constructor() {
+        super('invalid_expression')
+    }
+}
+
+export class Assignment extends Statement {
+    constructor(public variable: AssignableAccessNode, opRange: TextRange, public op: AssignmentOperator, public expression: Expression) {
+        super("assignment",opRange)
     }
 }
 
@@ -107,3 +113,10 @@ export class CallAccess extends AccessNode {
         super("call_access",parent)
     }
 }
+
+export class CallStatement extends Statement {
+    constructor(public call: CallAccess, range: TextRange) {
+        super("call",range)
+    }
+}
+
