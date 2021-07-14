@@ -1,4 +1,5 @@
-import { ElseStatement, ArrayExpression, AssignableExpression, Assignment, BinaryExpression, CallAccess, CallStatement, CodeBlock, Expression, FieldAccess, IfStatement, InvalidExpression, LiteralExpression, MainBlock, RootNode, Statement, UnaryExpression, VarDeclaration, VariableAccess, ModifierList } from "./ast";
+import { ElseStatement, ArrayExpression, AssignableExpression, Assignment, BinaryExpression, CallAccess, CallStatement, CodeBlock, Expression, FieldAccess, IfStatement, InvalidExpression, LiteralExpression, MainBlock, RootNode, Statement, UnaryExpression, VarDeclaration, VariableAccess, ModifierList, Parameter, SimpleFunction, ReturnStatement } from "./ast";
+import { BasicTypeToken, FunctionTypeToken, SingleTypeToken, TypeToken } from "./oop";
 import { AssignmentOperator, BinaryOperator } from "./operators";
 import { TextRange, Token, Tokenizer, TokenType } from "./tokenizer";
 
@@ -12,7 +13,7 @@ export class Parser {
     }
 
     error(token: Token, msg: string) {
-        this.errorRange(token.range, msg)
+        this.errorRange(token.range, msg + ', found ' + token.value)
     }
 
     errorRange(range: TextRange, msg: string) {
@@ -46,6 +47,12 @@ export class Parser {
             this.lookforward.push(n)
         }
         return this.lookforward[0] || Token.EOF
+    }
+
+    goBack() {
+        if (this.lastToken.isValid()) {
+            this.lookforward.unshift(this.lastToken)
+        }
     }
 
     isNext(type: TokenType) {
@@ -132,13 +139,14 @@ export class Parser {
 
     parseTopLevel(modifiers: ModifierList): Statement | undefined {
         if (this.isNext(TokenType.keyword)) {
-            let kw = this.next()
+            let kw = this.peek()
             switch (kw.value) {
                 case 'var':
                     modifiers.assertEmpty(this)
                     return this.parseVarDecl()
                 case 'main':
                     modifiers.assertEmpty(this)
+                    this.next()
                     let block = this.parseBlock()
                     if (block) {
                         return new MainBlock(kw.range,block.statements)
@@ -148,6 +156,7 @@ export class Parser {
                 case 'native':
                 case 'abstract':
                     modifiers.add(this,kw)
+                    this.next()
                     return this.parseTopLevel(modifiers)
                 case 'function':
                     return this.parseFunction(modifiers)
@@ -191,6 +200,13 @@ export class Parser {
             return this.parseIf()
         } else if (this.isValueNext('{')) {
             return this.parseBlock()
+        } else if (this.isValueNext('return')) {
+            let label = this.next()
+            let expr: Expression | undefined= this.parseExpression()
+            if (expr instanceof InvalidExpression) {
+                expr = undefined
+            }
+            return new ReturnStatement(label.range, expr)
         } else {
             return this.parseVarAccess()
         }
@@ -215,6 +231,8 @@ export class Parser {
                     } else {
                         this.error(this.peek(),"Expected else statement")
                     }
+                } else {
+                    this.goBack()
                 }
                 return new IfStatement(label.range, expr, then, orElse)
             } else {
@@ -227,10 +245,94 @@ export class Parser {
         modifiers.assertHasOnly(this,'private','native')
         let label = this.next()
         let name = this.expect(TokenType.identifier)
+        console.log('parsing function',name)
         if (name) {
             if (this.isValueNext('(')) {
                 let params = this.parseParameterList()
-                
+                let code = this.parseBlock()
+                return new SimpleFunction(label.range, modifiers, name, params, code)
+            }
+        }
+    }
+    
+    parseParameterList() {
+        let params: Parameter[] = []
+        if (this.expectValue('(')) {
+            while (this.hasNext() && !this.isValueNext(')')) {
+                let p = this.parseParameter();
+                if (p) {
+                    params.push(p)
+                }
+                if (!this.isValueNext(',')) {
+                    break
+                }
+            }
+            this.expectValue(')')
+        }
+        return params
+    }
+
+    parseParameter(): Parameter | undefined {
+        let type = this.parseTypeToken(true)
+        if (type) {
+            let name = this.expect(TokenType.identifier)
+            if (name) {
+                let vararg = this.skipValue('...')
+
+                let expr: Expression | undefined
+                if (!vararg && this.skipValue('=')) {
+                    expr = this.parseExpression()
+                }
+                return new Parameter(name, type, expr, vararg)
+            }
+        }
+    }
+
+    parseTypeToken(allowOptional: boolean): TypeToken | undefined {
+        let first = this.parseSingleTypeToken(allowOptional)
+        if (first) {
+            let options: SingleTypeToken[] = [first]
+            if (this.isValueNext('|')) {
+                while (this.hasNext() && this.skipValue('|')) {
+                    let t = this.parseSingleTypeToken(allowOptional)
+                    if (t) {
+                        options.push(t)
+                    } else {
+                        break
+                    }
+                }
+            }
+            return new TypeToken(options)
+        }
+    }
+
+    parseSingleTypeToken(allowOptional: boolean): SingleTypeToken | undefined {
+        if (this.isValueNext('(')) {
+            let params = this.parseParameterList()
+            let optional = allowOptional && this.skipValue('?')
+            this.expectValue('=>')
+            let ret = this.parseTypeToken(allowOptional)
+            if (ret) {
+                return new FunctionTypeToken(params, ret, optional)
+            }
+        } else {
+            let base = this.expect(TokenType.identifier)
+            if (base) {
+                let params: TypeToken[] = []
+                if (this.skipValue('<')) {
+                    while (this.hasNext() && !this.isValueNext('>')) {
+                        let t = this.parseTypeToken(false)
+                        if (t) {
+                            params.push(t)
+                        }
+                        if (!this.skipValue(',')) {
+                            break
+                        }
+                    }
+                    this.expectValue('>')
+                }
+                let optional = allowOptional && this.skipValue('?')
+                return new BasicTypeToken(base, params, optional)
             }
         }
     }
@@ -287,7 +389,6 @@ export class Parser {
     }
 
     parseExpression(): Expression {
-        console.log('parsing expression')
         let expr = this.parseOrExpression()
         while (this.isValueNext('&&')) {
             expr = new BinaryExpression(expr,this.next(),this.parseOrExpression());

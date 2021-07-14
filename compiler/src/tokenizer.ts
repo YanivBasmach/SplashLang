@@ -138,9 +138,9 @@ export class ExpressionSegment implements StringSegment {
 
 const symbols = ['~','`',';','!','@','#','$','%','^','&','*','(',')','-','+','=','[',']','{','}','\'',':','"',',','?','/','|','\\','.','<','>'];
 
-const multiCharOperators = ['++','--','&&','||','**','//','<=','>=','==','!=','..','+=','-=','*=','/=','%=','**=','//='];
+const multiCharOperators = ['++','--','&&','||','**','//','<=','>=','==','!=','..','...','+=','-=','*=','/=','%=','**=','//='];
 
-const keywords = ['main','function','if','var','const','as','is','in','while','for','switch','return','constructor','private','protected','abstract','final','static','readonly','operator','iterator','indexer','accessor','invoker','true','false','null']
+const keywords = ['main','function','if','var','const','as','is','in','while','for','switch','return','constructor','private','protected','abstract','native','final','static','readonly','operator','iterator','indexer','accessor','invoker','true','false','null']
 
 export class Tokenizer {
 

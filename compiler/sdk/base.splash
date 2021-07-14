@@ -1,7 +1,7 @@
 
 
-function print(object... msg) {
-    Process.stdout.write(msg[].toString().join(' '))
+function print(object msg...) {
+    Process.stdout.write(msg.mapToString().join(' '))
 }
 
 function readString(string? msg) {

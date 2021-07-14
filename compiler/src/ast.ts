@@ -1,6 +1,7 @@
 import { TextRange, Token } from "./tokenizer";
 import { BinaryOperator, UnaryOperator, AssignmentOperator } from "./operators";
 import { Parser } from "./parser";
+import { TypeToken } from "./oop";
 
 
 export abstract class ASTNode {
@@ -156,5 +157,27 @@ export class ModifierList extends ASTNode {
                 parser.error(m, "This modifier is invalid here")
             }
         }
+    }
+}
+
+export class Parameter extends ASTNode {
+
+    constructor(public name: Token, public type: TypeToken, public defValue?: Expression, public vararg?: boolean) {
+        super('parameter')
+    }
+
+}
+
+export class SimpleFunction extends Statement {
+
+    constructor(public label: TextRange, public modifiers: ModifierList, public name: Token, public params: Parameter[], public code?: CodeBlock) {
+        super('function',label)
+    }
+
+}
+
+export class ReturnStatement extends Statement {
+    constructor(label: TextRange, public expr: Expression | undefined) {
+        super('return',label)
     }
 }
