@@ -1,23 +1,29 @@
-import { AccessNode, AssignableAccessNode, Assignment, BinaryExpression, CallAccess, CallStatement, CodeBlock, Expression, FieldAccess, InvalidExpression, LiteralExpression, MainBlock, RootNode, Statement, VarDeclaration, VariableRootAccess } from "./ast";
+import { ElseStatement, ArrayExpression, AssignableExpression, Assignment, BinaryExpression, CallAccess, CallStatement, CodeBlock, Expression, FieldAccess, IfStatement, InvalidExpression, LiteralExpression, MainBlock, RootNode, Statement, UnaryExpression, VarDeclaration, VariableAccess, ModifierList } from "./ast";
 import { AssignmentOperator, BinaryOperator } from "./operators";
 import { TextRange, Token, Tokenizer, TokenType } from "./tokenizer";
 
 export class Parser {
 
     lookforward: Token[] = []
-    lastToken: Token | undefined
+    lastToken: Token
 
     constructor(public file: string, public tokenizer: Tokenizer) {
-        
+        this.lastToken = Token.EOF;
     }
 
     error(token: Token, msg: string) {
-        console.log('Compilation error at ' + TextRange.toString(token.range) + ': ' + msg)
+        this.errorRange(token.range, msg)
+    }
+
+    errorRange(range: TextRange, msg: string) {
+        console.log('Compilation error at ' + TextRange.toString(range) + ': ' + msg)
     }
 
     next(skipComments = true): Token {
         if (this.lookforward.length > 0) {
-            return this.lookforward.shift() || Token.EOF
+            let n = this.lookforward.shift();
+            this.lastToken = n || Token.EOF
+            return n || Token.EOF
         }
         let n = this.tokenizer.next()
         if (skipComments) {
@@ -94,41 +100,58 @@ export class Parser {
         return Token.invalid(this.peek().range)
     }
 
+    skipEmptyLines() {
+        while (this.hasNext() && this.isNext(TokenType.line_end)) {
+            this.next()
+        }
+    }
+
     parseFile(): RootNode {
         let root = new RootNode()
 
         while (this.hasNext()) {
-            if (this.isNext(TokenType.keyword)) {
-                let s = this.parseTopLevel()
+            if (this.isNext(TokenType.line_end)) {
+                this.next()
+            } else {
+                let s = this.parseTopLevel(new ModifierList())
                 if (s) {
                     root.statements.push(s)
-                    this.expect(TokenType.line_end)
+                    if (this.hasNext()) {
+                        this.expect(TokenType.line_end)
+                    }
                 } else {
                     while (this.hasNext() && !this.isNext(TokenType.line_end)) {
                         this.next()
                     }
                 }
-            } else if (this.isNext(TokenType.line_end)) {
-                this.next()
-            } else {
-                // error
             }
         }
 
         return root
     }
 
-    parseTopLevel(): Statement | undefined {
-        let kw = this.next()
-        switch (kw.value) {
-            case 'var':
-                return this.parseVarDecl()
-            case 'main':
-                let block = this.parseBlock()
-                if (block) {
-                    return new MainBlock(kw.range,block.statements)
-                }
-                break
+    parseTopLevel(modifiers: ModifierList): Statement | undefined {
+        if (this.isNext(TokenType.keyword)) {
+            let kw = this.next()
+            switch (kw.value) {
+                case 'var':
+                    modifiers.assertEmpty(this)
+                    return this.parseVarDecl()
+                case 'main':
+                    modifiers.assertEmpty(this)
+                    let block = this.parseBlock()
+                    if (block) {
+                        return new MainBlock(kw.range,block.statements)
+                    }
+                    break
+                case 'private':
+                case 'native':
+                case 'abstract':
+                    modifiers.add(this,kw)
+                    return this.parseTopLevel(modifiers)
+                case 'function':
+                    return this.parseFunction(modifiers)
+            }
         }
     }
 
@@ -145,7 +168,9 @@ export class Parser {
                 let s = this.parseStatement()
                 if (s) {
                     block.statements.push(s)
-                    this.expect(TokenType.line_end)
+                    if (this.hasNext()) {
+                        this.expect(TokenType.line_end)
+                    }
                 } else {
                     while (this.hasNext() && !this.isNext(TokenType.line_end)) {
                         this.next()
@@ -153,17 +178,60 @@ export class Parser {
                 }
             }
 
-            this.expect(TokenType.line_end)
+            this.expectValue('}')
             return block
         }
         return undefined
     }
 
     parseStatement(): Statement | undefined {
-        if (this.isNext(TokenType.identifier)) {
-            return this.parseVarAccess()
-        } else if (this.isValueNext('var')) {
+        if (this.isValueNext('var')) {
             return this.parseVarDecl()
+        } else if (this.isValueNext('if')) {
+            return this.parseIf()
+        } else if (this.isValueNext('{')) {
+            return this.parseBlock()
+        } else {
+            return this.parseVarAccess()
+        }
+    }
+
+    parseIf(): IfStatement | undefined {
+        let label = this.next()
+        if (this.expectValue('(')) {
+            let expr = this.parseExpression()
+            this.expectValue(')')
+            this.skipEmptyLines()
+            let then = this.parseStatement()
+            if (then) {
+                let orElse: ElseStatement | undefined
+                this.skipEmptyLines()
+                if (this.isValueNext('else')) {
+                    let l = this.next()
+                    this.skipEmptyLines()
+                    let statement = this.parseStatement()
+                    if (statement) {
+                        orElse = new ElseStatement(l.range, statement)
+                    } else {
+                        this.error(this.peek(),"Expected else statement")
+                    }
+                }
+                return new IfStatement(label.range, expr, then, orElse)
+            } else {
+                this.error(this.peek(),"Expected if statement")
+            }
+        }
+    }
+
+    parseFunction(modifiers: ModifierList): Statement | undefined {
+        modifiers.assertHasOnly(this,'private','native')
+        let label = this.next()
+        let name = this.expect(TokenType.identifier)
+        if (name) {
+            if (this.isValueNext('(')) {
+                let params = this.parseParameterList()
+                
+            }
         }
     }
 
@@ -180,19 +248,20 @@ export class Parser {
     }
 
     parseVarAccess(): Statement | undefined {
-        let v = this.next()
-        let access = this.parseAccessChain(new VariableRootAccess(v))
-        if (access instanceof AssignableAccessNode) {
+        let v = this.parsePrimaryExpression()
+        if (v instanceof AssignableExpression) {
             let assignOp = this.expectOneOf('assignment operator',...Object.values(AssignmentOperator))
             let value = this.parseExpression()
-            return new Assignment(access, assignOp.range, assignOp.value, value)
-        } else if (access instanceof CallAccess) {
-            return new CallStatement(access, this.lastToken?.range || TextRange.end)
+            return new Assignment(v, assignOp, value)
+        } else if (v instanceof CallAccess) {
+            return new CallStatement(v, this.lastToken.range || TextRange.end)
+        } else if (v instanceof InvalidExpression) {
+            return
         }
         this.error(this.peek(),'Cannot assign to this expression')
     }
 
-    parseAccessChain(parent: AccessNode): AccessNode {
+    parseAccessChain(parent: Expression): Expression {
         if (this.skipValue('.')) {
             let field = this.expect(TokenType.identifier)
             if (field) {
@@ -209,16 +278,19 @@ export class Parser {
         let list: Expression[] = []
         while (this.hasNext() && !this.isValueNext(end)) {
             list.push(this.parseExpression())
-            this.expectValue(',')
+            if (!this.skipValue(',')) {
+                break
+            }
         }
         this.expectValue(end)
         return list
     }
 
     parseExpression(): Expression {
+        console.log('parsing expression')
         let expr = this.parseOrExpression()
-        while (this.skipValue('&&')) {
-            expr = new BinaryExpression(expr,BinaryOperator.and,this.parseOrExpression());
+        while (this.isValueNext('&&')) {
+            expr = new BinaryExpression(expr,this.next(),this.parseOrExpression());
         }
         return expr
     }
@@ -226,7 +298,7 @@ export class Parser {
     parseOrExpression(): Expression {
         let expr = this.parseEqualityExpression()
         while (this.isValueNext('||')) {
-            expr = new BinaryExpression(expr,BinaryOperator.or,this.parseEqualityExpression());
+            expr = new BinaryExpression(expr,this.next(),this.parseEqualityExpression());
         }
         return expr
     }
@@ -234,15 +306,15 @@ export class Parser {
     parseEqualityExpression(): Expression {
         let expr = this.parseComparisonExpression()
         while (this.isValueNext('==','!=')) {
-            expr = new BinaryExpression(expr,this.next().value,this.parseComparisonExpression());
+            expr = new BinaryExpression(expr,this.next(),this.parseComparisonExpression());
         }
         return expr
     }
 
     parseComparisonExpression(): Expression {
         let expr = this.parseAdditiveExpression()
-        while (this.isValueNext('<','>','<=','>=')) {
-            expr = new BinaryExpression(expr,this.next().value,this.parseAdditiveExpression());
+        while (this.isValueNext('<','>','<=','>=','is')) {
+            expr = new BinaryExpression(expr,this.next(),this.parseAdditiveExpression());
         }
         return expr
     }
@@ -250,7 +322,7 @@ export class Parser {
     parseAdditiveExpression(): Expression {
         let expr = this.parseMultiExpression()
         while (this.isValueNext('+','-')) {
-            expr = new BinaryExpression(expr,this.next().value,this.parseMultiExpression());
+            expr = new BinaryExpression(expr,this.next(),this.parseMultiExpression());
         }
         return expr
     }
@@ -258,40 +330,55 @@ export class Parser {
     parseMultiExpression(): Expression {
         let expr = this.parsePowExpression()
         while (this.isValueNext('*','/','//','%')) {
-            expr = new BinaryExpression(expr,this.next().value,this.parsePowExpression());
+            expr = new BinaryExpression(expr,this.next(),this.parsePowExpression());
         }
         return expr
     }
 
     parsePowExpression(): Expression {
-        let expr = this.parseAsIsInExpression()
+        let expr = this.parseIsInExpression()
         while (this.isValueNext('**')) {
-            expr = new BinaryExpression(expr,this.next().value,this.parseAsIsInExpression());
+            expr = new BinaryExpression(expr,this.next(),this.parseIsInExpression());
         }
         return expr
     }
 
-    parseAsIsInExpression(): Expression {
-        let expr = this.parsePrimaryExpression()
-        while (this.isValueNext('as','is','in')) {
-            expr = new BinaryExpression(expr,this.next().value,this.parsePrimaryExpression());
+    parseIsInExpression(): Expression {
+        let expr = this.parseUnaryExpression()
+        while (this.isValueNext('as','in')) {
+            expr = new BinaryExpression(expr,this.next(),this.parseUnaryExpression());
         }
         return expr
+    }
+
+    parseUnaryExpression(): Expression {
+        if (this.isValueNext('+','-','!','..')) {
+            return new UnaryExpression(this.next(),this.parsePrimaryExpression());
+        }
+        return this.parsePrimaryExpression()
     }
 
     parsePrimaryExpression(): Expression {
-        if (this.isNext(TokenType.int) || this.isNext(TokenType.string) || this.isNext(TokenType.float)) {
-            return new LiteralExpression(this.next())
+        let expr: Expression
+        if (this.isNext(TokenType.int) || this.isNext(TokenType.string) || this.isNext(TokenType.float) || this.isValueNext('true','false')) {
+            expr = new LiteralExpression(this.next())
+        } else if (this.isNext(TokenType.identifier)) {
+            expr = new VariableAccess(this.next())
+        } else if (this.skipValue('[')) {
+            let values = this.parseExpressionList(']')
+            expr = new ArrayExpression(values)
+        } else if (this.skipValue('(')) {
+            expr = this.parseExpression()
+            this.expectValue(')')
+        } else {
+            return new InvalidExpression()
         }
+        return this.parseAccessChain(expr)
         /* todo: add other types of expression
-        boolean
-        array
-        variable + access
         this + access
         null
         json object
         */
-       return new InvalidExpression()
     }
 
 }

@@ -11,3 +11,6 @@ let tokenizer = new Tokenizer(input)
 let parser = new Parser(file, tokenizer)
 
 let root = parser.parseFile()
+
+console.log('done compilation!')
+console.log(JSON.stringify(root,undefined,2))

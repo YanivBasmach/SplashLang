@@ -5,7 +5,5 @@ main {
 
     x += 2
 
-    if (this.test + 5 < x && someFuncCall()) {
-        print "Hi"
-    }
+    print(str)
 }

@@ -1,5 +1,6 @@
 import { TextRange, Token } from "./tokenizer";
 import { BinaryOperator, UnaryOperator, AssignmentOperator } from "./operators";
+import { Parser } from "./parser";
 
 
 export abstract class ASTNode {
@@ -57,13 +58,13 @@ export abstract class Expression extends ASTNode {
 }
 
 export class BinaryExpression extends Expression {
-    constructor(public left: Expression, public op: BinaryOperator, public right: Expression) {
+    constructor(public left: Expression, public op: Token, public right: Expression) {
         super("binary_expression")
     }
 }
 
 export class UnaryExpression extends Expression {
-    constructor(public op: UnaryOperator, public expr: Expression) {
+    constructor(public op: Token, public expr: Expression) {
         super("unary_expression")
     }
 }
@@ -80,37 +81,37 @@ export class InvalidExpression extends Expression {
     }
 }
 
+export class ArrayExpression extends Expression {
+    constructor(public values: Expression[]) {
+        super('array_expression')
+    }
+}
+
 export class Assignment extends Statement {
-    constructor(public variable: AssignableAccessNode, opRange: TextRange, public op: AssignmentOperator, public expression: Expression) {
-        super("assignment",opRange)
+    constructor(public variable: AssignableExpression, public op: Token, public expression: Expression) {
+        super("assignment",op.range)
     }
 }
 
-export abstract class AccessNode extends ASTNode {
-    constructor(name: string, public parent?: AccessNode) {
-        super(name)
-    }
-}
-
-export class AssignableAccessNode extends AccessNode {
+export class AssignableExpression extends Expression {
     
 }
 
-export class FieldAccess extends AssignableAccessNode {
-    constructor(public field: Token, parent: AccessNode) {
-        super("field_access",parent)
+export class FieldAccess extends AssignableExpression {
+    constructor(public field: Token, public parent: Expression) {
+        super("field_access")
     }
 }
 
-export class VariableRootAccess extends AssignableAccessNode {
+export class VariableAccess extends AssignableExpression {
     constructor(public name: Token) {
         super("variable_access")
     }
 }
 
-export class CallAccess extends AccessNode {
-    constructor(public params: Expression[], parent?: AccessNode) {
-        super("call_access",parent)
+export class CallAccess extends Expression {
+    constructor(public params: Expression[], public parent: Expression) {
+        super("call_access")
     }
 }
 
@@ -120,3 +121,40 @@ export class CallStatement extends Statement {
     }
 }
 
+export class ModifierList extends ASTNode {
+
+    modifiers: Token[] = []
+
+    constructor() {
+        super('modifiers')
+    }
+
+    has(mod: string) {
+        for (let t of this.modifiers) {
+            if (t.value == mod) return true
+        }
+        return false
+    }
+
+    add(parser: Parser, mod: Token) {
+        if (this.has(mod.value)) {
+            parser.error(mod, "Duplicate modifier '" + mod.value + "'")
+        } else {
+            this.modifiers.push(mod)
+        }
+    }
+
+    assertEmpty(parser: Parser) {
+        if (this.modifiers.length > 0) {
+            parser.errorRange(TextRange.between(this.modifiers[0].range,this.modifiers[this.modifiers.length - 1].range),"Unexpected modifiers")
+        }
+    }
+    
+    assertHasOnly(parser: Parser, ...mods: string[]) {
+        for (let m of this.modifiers) {
+            if (!mods.includes(m.value)) {
+                parser.error(m, "This modifier is invalid here")
+            }
+        }
+    }
+}

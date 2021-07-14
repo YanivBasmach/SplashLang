@@ -34,8 +34,54 @@ export namespace TextRange {
         return {start: pos, end: {line: pos.line, column: pos.column + count}}
     }
 
+    export function min(a: TextRange, b: TextRange) {
+        if (a.start.line < b.start.line) {
+            return a
+        } else if (a.start.line > b.start.line) {
+            return b
+        }
+        if (a.start.column < b.start.column) {
+            return a
+        } else if (a.start.column > b.start.column) {
+            return b
+        }
+        return a
+    }
+
+    export function max(a: TextRange, b: TextRange) {
+        if (a.start.line < b.start.line) {
+            return b
+        } else if (a.start.line > b.start.line) {
+            return a
+        }
+        if (a.start.column < b.start.column) {
+            return b
+        } else if (a.start.column > b.start.column) {
+            return a
+        }
+        return b
+    }
+
+    export function between(from: TextRange, to: TextRange): TextRange {
+        let first = min(from, to)
+        let second = max(from, to)
+        return {start: first.start, end: second.end}
+    }
+
     export const end: TextRange = {start: {line: -1, column: 0}, end: {line: -1, column: 0}}
 
+}
+
+export enum TokenType {
+    keyword,
+    identifier,
+    symbol,
+    int,
+    float,
+    string,
+    line_end,
+    comment,
+    invalid
 }
 
 export class Token {
@@ -46,7 +92,7 @@ export class Token {
 
     static EOF = Token.invalid(TextRange.end)
 
-    constructor(public type: TokenType, public value: any, public range: TextRange) {
+    constructor(public type: TokenType, public value: string, public range: TextRange) {
 
     }
 
@@ -88,18 +134,6 @@ export class ExpressionSegment implements StringSegment {
     toString() {
         return '{' + this.tokens + '}'
     }
-}
-
-export enum TokenType {
-    keyword,
-    identifier,
-    symbol,
-    int,
-    float,
-    string,
-    line_end,
-    comment,
-    invalid
 }
 
 const symbols = ['~','`',';','!','@','#','$','%','^','&','*','(',')','-','+','=','[',']','{','}','\'',':','"',',','?','/','|','\\','.','<','>'];
@@ -201,7 +235,7 @@ export class Tokenizer {
                 break
             }
         }
-        return new StringToken(segments.join(),segments, {start, end: this.getPos()})
+        return new StringToken(segments.join(''),segments, {start, end: this.getPos()})
     }
 
     readNumber(start: Position, first: string) {
@@ -230,9 +264,9 @@ export class Tokenizer {
             }
         }
         if (str.indexOf('.') < 0) {
-            return new Token(TokenType.int, parseInt(str), {start, end: this.getPos()})
+            return new Token(TokenType.int, str, {start, end: this.getPos()})
         } else {
-            return new Token(TokenType.float, parseFloat(str), {start, end: this.getPos()})
+            return new Token(TokenType.float, str, {start, end: this.getPos()})
         }
     }
 
