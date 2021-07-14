@@ -1,7 +1,8 @@
 import { TextRange, Token } from "./tokenizer";
-import { BinaryOperator, UnaryOperator, AssignmentOperator } from "./operators";
 import { Parser } from "./parser";
-import { TypeToken } from "./oop";
+import { SplashType, TypeToken } from "./oop";
+import { Processor } from "./processor";
+import { Generated, GeneratedBlock, GeneratedStatement, SplashScript } from "./generator";
 
 
 export abstract class ASTNode {
@@ -17,16 +18,52 @@ export class RootNode extends ASTNode {
     constructor() {
         super("root")
     }
+    
+    index(proc: Processor) {
+        for (let s of this.statements) {
+            s.index(proc)
+        }
+    }
+
+    process(proc: Processor) {
+        for (let s of this.statements) {
+            s.process(proc)
+        }
+    }
+
+    generate(proc: Processor): Generated {
+        return new SplashScript(this.statements.map(s=>s.generate(proc)))
+    }
 }
 
 export abstract class Statement extends ASTNode {
     constructor(id: string, public label: TextRange) {
         super(id)
     }
+
+    index(proc: Processor) {
+
+    }
+
+    abstract process(proc: Processor): void
+
+    abstract generate(proc: Processor): GeneratedStatement
 }
 
 export class CodeBlock extends Statement {
     statements: Statement[] = []
+
+    process(proc: Processor) {
+        proc.push()
+        for (let s of this.statements) {
+            s.process(proc)
+        }
+        proc.pop()
+    }
+
+    generate(proc: Processor) {
+        return new GeneratedBlock(this.statements.map(s=>s.generate(proc)))
+    }
 }
 
 export class MainBlock extends CodeBlock {
@@ -37,9 +74,19 @@ export class MainBlock extends CodeBlock {
 }
 
 export class VarDeclaration extends Statement {
+    
     constructor(label: TextRange, public name: Token, public init?: Expression) {
         super("var_declaration",label)
     }
+
+    generate(proc: Processor): GeneratedStatement {
+        
+    }
+    process(proc: Processor): void {
+        proc.addVariable(this.name, this.init ? this.init.getResultType() : ()=>SplashType.object)
+    }
+
+    
 }
 
 export class IfStatement extends Statement {
@@ -55,7 +102,7 @@ export class ElseStatement extends Statement {
 }
 
 export abstract class Expression extends ASTNode {
-    
+    abstract getResultType(proc: Processor): ()=>SplashType
 }
 
 export class BinaryExpression extends Expression {
@@ -172,6 +219,10 @@ export class SimpleFunction extends Statement {
 
     constructor(public label: TextRange, public modifiers: ModifierList, public name: Token, public params: Parameter[], public code?: CodeBlock) {
         super('function',label)
+    }
+
+    process(proc: Processor) {
+        proc.functions.push(this)
     }
 
 }

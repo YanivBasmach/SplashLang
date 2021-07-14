@@ -27,3 +27,8 @@ export class FunctionTypeToken extends SingleTypeToken {
         super(optional)
     }
 }
+
+export class SplashType {
+    static object = new SplashType()
+
+}

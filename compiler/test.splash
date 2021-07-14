@@ -18,5 +18,3 @@ function readString(string? msg) {
     }
     return Process.stdin.readLine()
 }
-
-native function randomHashCode()
