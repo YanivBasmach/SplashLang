@@ -1,5 +1,5 @@
 import { RootNode, SimpleFunction } from "./ast";
-import { SplashType } from "./oop";
+import { SplashType, TypeToken } from "./oop";
 import { TextRange, Token } from "./tokenizer";
 
 
@@ -27,6 +27,16 @@ export class Processor {
 
     pop() {
         this.variables.pop()
+    }
+
+    addVariable(name: Token, type: SplashType) {
+        if (this.variables.length > 0) {
+            this.variables[this.variables.length-1][name.value] = new Variable(name, type)
+        }
+    }
+
+    resolveType(token: TypeToken): SplashType {
+        
     }
 
 }

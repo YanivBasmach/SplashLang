@@ -1,7 +1,7 @@
-import { ElseStatement, ArrayExpression, AssignableExpression, Assignment, BinaryExpression, CallAccess, CallStatement, CodeBlock, Expression, FieldAccess, IfStatement, InvalidExpression, LiteralExpression, MainBlock, RootNode, Statement, UnaryExpression, VarDeclaration, VariableAccess, ModifierList, Parameter, SimpleFunction, ReturnStatement } from "./ast";
+import { ElseStatement, ArrayExpression, AssignableExpression, Assignment, BinaryExpression, CallAccess, CallStatement, CodeBlock, Expression, FieldAccess, IfStatement, InvalidExpression, LiteralExpression, MainBlock, RootNode, Statement, UnaryExpression, VarDeclaration, VariableAccess, ModifierList, Parameter, SimpleFunction, ReturnStatement, ExpressionList } from "./ast";
 import { BasicTypeToken, FunctionTypeToken, SingleTypeToken, TypeToken } from "./oop";
 import { AssignmentOperator, BinaryOperator } from "./operators";
-import { TextRange, Token, Tokenizer, TokenType } from "./tokenizer";
+import { Position, TextRange, Token, Tokenizer, TokenType } from "./tokenizer";
 
 export class Parser {
 
@@ -54,6 +54,10 @@ export class Parser {
             this.lookforward.unshift(this.lastToken)
         }
     }
+    
+    startRange(): RangeBuilder {
+        return new RangeBuilder(this)
+    }
 
     isNext(type: TokenType) {
         return this.peek().type == type
@@ -103,7 +107,7 @@ export class Parser {
         for (let v of values) {
             if (this.isValueNext(v)) return this.next()
         }
-        // error
+        this.error(this.peek(), "Expected " + name)
         return Token.invalid(this.peek().range)
     }
 
@@ -244,10 +248,14 @@ export class Parser {
     parseFunction(modifiers: ModifierList): Statement | undefined {
         modifiers.assertHasOnly(this,'private','native')
         let label = this.next()
-        let name = this.expect(TokenType.identifier)
-        console.log('parsing function',name)
-        if (name) {
-            if (this.isValueNext('(')) {
+        if (this.isNext(TokenType.identifier)) {
+            let retType: TypeToken = TypeToken.void
+            
+            if (this.peek(1).value != '(') {
+                retType = this.parseTypeToken(true) || TypeToken.void
+            }
+            let name = this.expect(TokenType.identifier)
+            if (name && this.expectValue('(')) {
                 let params = this.parseParameterList()
                 let code = this.parseBlock()
                 return new SimpleFunction(label.range, modifiers, name, params, code)
@@ -307,13 +315,14 @@ export class Parser {
     }
 
     parseSingleTypeToken(allowOptional: boolean): SingleTypeToken | undefined {
+        let range = this.startRange()
         if (this.isValueNext('(')) {
             let params = this.parseParameterList()
             let optional = allowOptional && this.skipValue('?')
             this.expectValue('=>')
             let ret = this.parseTypeToken(allowOptional)
             if (ret) {
-                return new FunctionTypeToken(params, ret, optional)
+                return new FunctionTypeToken(range.end(), params, ret, optional)
             }
         } else {
             let base = this.expect(TokenType.identifier)
@@ -332,7 +341,7 @@ export class Parser {
                     this.expectValue('>')
                 }
                 let optional = allowOptional && this.skipValue('?')
-                return new BasicTypeToken(base, params, optional)
+                return new BasicTypeToken(range.end(), base, params, optional)
             }
         }
     }
@@ -376,7 +385,8 @@ export class Parser {
         return parent
     }
 
-    parseExpressionList(end: string): Expression[] {
+    parseExpressionList(end: string): ExpressionList {
+        let range = this.startRange()
         let list: Expression[] = []
         while (this.hasNext() && !this.isValueNext(end)) {
             list.push(this.parseExpression())
@@ -385,7 +395,7 @@ export class Parser {
             }
         }
         this.expectValue(end)
-        return list
+        return new ExpressionList(list, range.end())
     }
 
     parseExpression(): Expression {
@@ -482,4 +492,17 @@ export class Parser {
         */
     }
 
+}
+
+export class RangeBuilder {
+
+    start: Position
+
+    constructor(private parser: Parser) {
+        this.start = parser.peek().range.start
+    }
+
+    end(): TextRange {
+        return {start: this.start, end: this.parser.lastToken.range.end}
+    }
 }

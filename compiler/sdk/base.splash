@@ -4,14 +4,14 @@ function print(object msg...) {
     Process.stdout.write(msg.mapToString().join(' '))
 }
 
-function readString(string? msg) {
+function string readString(string? msg) {
     if (msg) {
         print(msg)
     }
     return Process.stdin.readLine()
 }
 
-native function randomHashCode()
+native function int randomHashCode()
 
 class object {
 

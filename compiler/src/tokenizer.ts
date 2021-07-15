@@ -86,10 +86,6 @@ export enum TokenType {
 
 export class Token {
 
-    static invalid(range: TextRange) {
-        return new Token(TokenType.invalid, "", range)
-    }
-
     static EOF = Token.invalid(TextRange.end)
 
     constructor(public type: TokenType, public value: string, public range: TextRange) {
@@ -102,6 +98,15 @@ export class Token {
 
     toString() {
         return TokenType[this.type] + ':' + this.value + '(' + TextRange.toString(this.range) + ')'
+    }
+
+    static invalid(range: TextRange) {
+        return new Token(TokenType.invalid, "", range)
+    }
+
+    static dummy(value: string) {
+        let t = new Tokenizer(value)
+        return t.next()
     }
 }
 
@@ -140,7 +145,7 @@ const symbols = ['~','`',';','!','@','#','$','%','^','&','*','(',')','-','+','='
 
 const multiCharOperators = ['++','--','&&','||','**','//','<=','>=','==','!=','..','...','+=','-=','*=','/=','%=','**=','//='];
 
-const keywords = ['main','function','if','var','const','as','is','in','while','for','switch','return','constructor','private','protected','abstract','native','final','static','readonly','operator','iterator','indexer','accessor','invoker','true','false','null']
+const keywords = ['main','function','if','var','const','as','is','in','while','for','switch','return','constructor','private','protected','abstract','native','final','static','readonly','operator','iterator','get','set','indexer','accessor','invoker','true','false','null','void']
 
 export class Tokenizer {
 
