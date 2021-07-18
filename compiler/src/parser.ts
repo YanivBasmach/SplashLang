@@ -1,4 +1,4 @@
-import { ElseStatement, ArrayExpression, AssignableExpression, Assignment, BinaryExpression, CallAccess, CallStatement, CodeBlock, Expression, FieldAccess, IfStatement, InvalidExpression, LiteralExpression, MainBlock, RootNode, Statement, UnaryExpression, VarDeclaration, VariableAccess, ModifierList, Parameter, SimpleFunction, ReturnStatement, ExpressionList } from "./ast";
+import { ElseStatement, ArrayExpression, AssignableExpression, Assignment, BinaryExpression, CallAccess, CallStatement, CodeBlock, Expression, FieldAccess, IfStatement, InvalidExpression, LiteralExpression, MainBlock, RootNode, Statement, UnaryExpression, VarDeclaration, VariableAccess, ModifierList, ParameterNode, SimpleFunction, ReturnStatement, ExpressionList } from "./ast";
 import { BasicTypeToken, FunctionTypeToken, SingleTypeToken, TypeToken } from "./oop";
 import { AssignmentOperator, BinaryOperator } from "./operators";
 import { Position, TextRange, Token, Tokenizer, TokenType } from "./tokenizer";
@@ -264,7 +264,7 @@ export class Parser {
     }
     
     parseParameterList() {
-        let params: Parameter[] = []
+        let params: ParameterNode[] = []
         if (this.expectValue('(')) {
             while (this.hasNext() && !this.isValueNext(')')) {
                 let p = this.parseParameter();
@@ -280,7 +280,7 @@ export class Parser {
         return params
     }
 
-    parseParameter(): Parameter | undefined {
+    parseParameter(): ParameterNode | undefined {
         let type = this.parseTypeToken(true)
         if (type) {
             let name = this.expect(TokenType.identifier)
@@ -291,7 +291,7 @@ export class Parser {
                 if (!vararg && this.skipValue('=')) {
                     expr = this.parseExpression()
                 }
-                return new Parameter(name, type, expr, vararg)
+                return new ParameterNode(name, type, expr, vararg)
             }
         }
     }

@@ -1,8 +1,8 @@
 import { TextRange, Token } from "./tokenizer";
 import { Parser } from "./parser";
-import { SplashType, TypeToken } from "./oop";
+import { SplashClass, SplashComboType, SplashType, TypeToken } from "./oop";
 import { Processor } from "./processor";
-import { GenCall, Generated, GeneratedBlock, GeneratedExpression, GeneratedStatement, GenVarDeclaration, SplashScript } from "./generator";
+import { GenCall, GenCallAccess, Generated, GeneratedBinary, GeneratedBlock, GeneratedExpression, GeneratedStatement, GenFieldAccess, GenVarDeclaration, SplashScript } from "./generator";
 import { BinaryOperator, UnaryOperator } from "./operators";
 
 
@@ -81,10 +81,10 @@ export class VarDeclaration extends Statement {
     }
 
     generate(proc: Processor): GeneratedStatement {
-        return new GenVarDeclaration(this.name.value,this.init?.generate())
+        return new GenVarDeclaration(this.name.value,this.init?.generate(proc))
     }
     process(proc: Processor): void {
-        proc.addVariable(this.name, this.init ? this.init.getResultType(proc) : SplashType.object)
+        proc.addVariable(this.name, this.init ? this.init.getResultType(proc) : SplashClass.object)
     }
 
     
@@ -137,8 +137,12 @@ export class ExpressionList {
 
     }
 
-    canApplyTo(parameters: Parameter[]) {
+    canApplyTo(parameters: ParameterNode[]) {
 
+    }
+
+    generate(proc: Processor) {
+        return this.values.map(v=>v.generate(proc))
     }
 
 }
@@ -154,18 +158,19 @@ export class BinaryExpression extends Expression {
         let rightType = this.right.getResultType(proc)
         let binop = leftType.getBinaryOperation(this.op.value as BinaryOperator, rightType)
         if (binop) {
-            return proc.resolveType(binop.retType)
+            return binop.retType
         }
         proc.error(this.op.range, "Operator " + this.op.value + " cannot be applied to " + leftType.name)
-        return SplashType.object
+        return SplashClass.object
     }
 
     generate(proc: Processor): GeneratedExpression {
-        
+        return new GeneratedBinary(this.left.generate(proc), this.op.value as BinaryOperator, this.right.generate(proc))
     }
 }
 
 export class UnaryExpression extends Expression {
+    
     constructor(public op: Token, public expr: Expression) {
         super("unary_expression", TextRange.between(op.range, expr.range))
     }
@@ -174,8 +179,13 @@ export class UnaryExpression extends Expression {
         let type = this.expr.getResultType(proc)
         let uop = type.getUnaryOperation(this.op.value as UnaryOperator)
         if (uop) {
-            return uop
+            return uop.retType
         }
+        proc.error(this.op.range, "Operator " + this.op.value + " cannot be applied to " + type.)
+        return SplashClass.object
+    }
+    generate(proc: Processor): GeneratedExpression {
+        
     }
 }
 
@@ -208,8 +218,22 @@ export abstract class AssignableExpression extends Expression {
 }
 
 export class FieldAccess extends AssignableExpression {
+    
     constructor(public field: Token, public parent: Expression) {
         super("field_access",TextRange.between(parent.range, field.range))
+    }
+
+    getResultType(proc: Processor): SplashType {
+        let parentType = this.parent.getResultType(proc)
+        let m = parentType.getMembers(this.field.value)
+        if (m.length > 0) {
+            return new SplashComboType(m.map(f=>f.type))
+        }
+        proc.error(this.field.range, "Unknown member in type " + parentType)
+        return SplashClass.object
+    }
+    generate(proc: Processor): GeneratedExpression {
+        return new GenFieldAccess(this.parent.generate(proc),this.field.value)
     }
 }
 
@@ -229,12 +253,12 @@ export class CallAccess extends Expression {
         let res = this.parent.getResultType(proc)
         let invoker = res.getInvoker(this.params);
         if (invoker) {
-            return proc.resolveType(invoker.retType)
+            return invoker.retType
         }
-        return SplashType.object
+        return SplashClass.object
     }
-    generate(proc: Processor): GeneratedExpression {
-        
+    generate(proc: Processor): GenCallAccess {
+        return new GenCallAccess(this.parent.generate(proc), this.params.generate(proc))
     }
 }
 
@@ -293,7 +317,7 @@ export class ModifierList extends ASTNode {
     }
 }
 
-export class Parameter extends ASTNode {
+export class ParameterNode extends ASTNode {
 
     constructor(public name: Token, public type: TypeToken, public defValue?: Expression, public vararg?: boolean) {
         super('parameter')
@@ -315,7 +339,7 @@ export class Parameter extends ASTNode {
 
 export class SimpleFunction extends Statement {
     
-    constructor(public label: TextRange, public modifiers: ModifierList, public name: Token, public params: Parameter[], public code?: CodeBlock) {
+    constructor(public label: TextRange, public modifiers: ModifierList, public name: Token, public params: ParameterNode[], public code?: CodeBlock) {
         super('function',label)
     }
 
