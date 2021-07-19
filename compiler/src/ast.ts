@@ -1,8 +1,8 @@
 import { TextRange, Token } from "./tokenizer";
 import { Parser } from "./parser";
-import { SplashClass, SplashComboType, SplashType, TypeToken } from "./oop";
+import { Parameter, SplashClass, SplashComboType, SplashType, TypeToken } from "./oop";
 import { Processor } from "./processor";
-import { GenCall, GenCallAccess, Generated, GeneratedBinary, GeneratedBlock, GeneratedExpression, GeneratedStatement, GenFieldAccess, GenVarDeclaration, SplashScript } from "./generator";
+import { GenCall, GenCallAccess, Generated, GeneratedBinary, GeneratedBlock, GeneratedExpression, GeneratedStatement, GeneratedUnary, GenFieldAccess, GenFunction, GenVarDeclaration, SplashScript } from "./generator";
 import { BinaryOperator, UnaryOperator } from "./operators";
 
 
@@ -33,7 +33,14 @@ export class RootNode extends ASTNode {
     }
 
     generate(proc: Processor): Generated {
-        return new SplashScript(this.statements.map(s=>s.generate(proc)))
+        let script = new SplashScript()
+        for (let s of this.statements) {
+            if (s instanceof VarDeclaration) {
+                script.vars.push(s.generate(proc))
+            } else if (s instanceof SimpleFunction) {
+                script.functions.push(s.generate(proc))
+            }
+        }
     }
 }
 
@@ -80,7 +87,7 @@ export class VarDeclaration extends Statement {
         super("var_declaration",label)
     }
 
-    generate(proc: Processor): GeneratedStatement {
+    generate(proc: Processor): GenVarDeclaration {
         return new GenVarDeclaration(this.name.value,this.init?.generate(proc))
     }
     process(proc: Processor): void {
@@ -137,7 +144,7 @@ export class ExpressionList {
 
     }
 
-    canApplyTo(parameters: ParameterNode[]) {
+    canApplyTo(parameters: Parameter[]) {
 
     }
 
@@ -160,7 +167,7 @@ export class BinaryExpression extends Expression {
         if (binop) {
             return binop.retType
         }
-        proc.error(this.op.range, "Operator " + this.op.value + " cannot be applied to " + leftType.name)
+        proc.error(this.op.range, "Operator " + this.op.value + " cannot be applied to " + leftType)
         return SplashClass.object
     }
 
@@ -185,7 +192,7 @@ export class UnaryExpression extends Expression {
         return SplashClass.object
     }
     generate(proc: Processor): GeneratedExpression {
-        
+        return new GeneratedUnary(this.expr.generate(proc),this.op.value as UnaryOperator)
     }
 }
 
@@ -335,11 +342,15 @@ export class ParameterNode extends ASTNode {
         }
     }
 
+    generate(proc: Processor) {
+        return new Parameter(this.name.value,proc.resolveType(this.type),this.defValue?.generate(proc),this.vararg)
+    }
+
 }
 
 export class SimpleFunction extends Statement {
     
-    constructor(public label: TextRange, public modifiers: ModifierList, public name: Token, public params: ParameterNode[], public code?: CodeBlock) {
+    constructor(public label: TextRange, public modifiers: ModifierList, public name: Token, public retType: TypeToken, public params: ParameterNode[], public code?: CodeBlock) {
         super('function',label)
     }
 
@@ -380,8 +391,8 @@ export class SimpleFunction extends Statement {
         
     }
 
-    generate(proc: Processor): GeneratedStatement {
-        
+    generate(proc: Processor): GenFunction {
+        return new GenFunction(this.name.value,proc.resolveType(this.retType),this.params.map(p=>p.generate(proc)),this.code?.generate(proc))
     }
 
 }

@@ -1,5 +1,5 @@
 import { ExpressionList, ModifierList, ParameterNode } from "./ast";
-import { GeneratedExpression } from "./generator";
+import { GeneratedBlock, GeneratedExpression, SplashScript } from "./generator";
 import { BinaryOperator, UnaryOperator } from "./operators";
 import { Runtime } from "./runtime";
 import { TextRange, Token } from "./tokenizer";
@@ -90,12 +90,32 @@ export abstract class SplashType {
         }
     }
 
+    getValidMethod(name: string, ...params: Value[]) {
+        return this.getMethods(name)
+            .filter(m=>allParamsMatch(m.params,params))[0]
+    }
+
+}
+
+export class DummySplashType extends SplashType {
+    static void = new DummySplashType('void')
+    static null = new DummySplashType('null')
+
+    constructor(public name: string) {
+        super()
+    }
+    get members(): Member[] {
+        return []
+    }
+    
 }
 
 export class SplashClass extends SplashType {
     static object = new SplashClass('object')
 
     private _members: Member[] = []
+
+    staticFields: {[name: string]: Value} = {}
 
     constructor(public name: string) {
         super()
@@ -144,32 +164,50 @@ export class SplashComboType extends SplashType {
 }
 
 export interface Member {
+    cls: SplashClass
     name: string
     type: SplashType
 }
 
 export abstract class ClassExecutable {
 
-    constructor(public params: Parameter[], public modifiers: ModifierList) {
+    constructor(public cls: SplashClass, public params: Parameter[], public modifiers: ModifierList) {
 
     }
 
-    invoke(runtime: Runtime, ...params: Value[]): Value {
-
-    }
+    abstract invoke(runtime: Runtime, thisArg?: Value, ...params: Value[]): Value
 
 }
 
 export class Method extends ClassExecutable implements Member {
+    
 
     type: SplashType
 
-    constructor(public name: string, public retType: SplashType, params: Parameter[], modifiers: ModifierList) {
-        super(params,modifiers)
+    constructor(cls: SplashClass, public name: string, public retType: SplashType, params: Parameter[], modifiers: ModifierList, public body?: GeneratedBlock) {
+        super(cls,params,modifiers)
         this.type = new SplashFunctionType(this.params.map(p=>p.type),this.retType)
     }
 
-    
+    invoke(runtime: Runtime, thisArg?: Value, ...params: Value[]): Value {
+        let r: Runtime
+        if (this.modifiers.has('static')) {
+            r = runtime.inClassStatic(this.cls)
+        } else if (thisArg) {
+            r = runtime.inClassInstance(thisArg)
+        } else {
+            return Value.null
+        }
+        for (let i = 0; i < params.length; i++) {
+            let pv = params[i]
+            let p = Parameter.getParamAt(i,this.params)
+            if (p) {
+                r.setVariable(p.name,pv)
+            }
+        }
+        this.body?.run(r)
+        return r.returnValue || Value.void
+    }
 
 }
 
@@ -177,24 +215,64 @@ export class Parameter {
     constructor(public name: string, public type: SplashType, public defValue?: GeneratedExpression, public vararg?: boolean) {
 
     }
+
+    static getParamAt(index: number, params: Parameter[]) {
+        if (index < params.length) {
+            return params[index]
+        }
+        if (params[params.length - 1].vararg) {
+            return params[params.length - 1]
+        }
+    }
 }
 
 export class Constructor extends ClassExecutable {
 
+    constructor(cls: SplashClass, params: Parameter[], modifiers: ModifierList, public body: GeneratedBlock) {
+        super(cls,params,modifiers)
+    }
+
+    invoke(runtime: Runtime, thisArg?: Value, ...params: Value[]): Value {
+        let r = runtime.inClassStatic(this.cls)
+        let val = new Value(this.cls,r)
+        let 
+    }
+
 }
 
-export class Value {
-    fields: {[name: string]: Value} = {}
-
-    constructor(public type: SplashType) {
+export class Field implements Member {
+    constructor(public cls: SplashClass, public name: string, public modifiers: ModifierList, public type: SplashType, public init?: GeneratedExpression) {
 
     }
 
+    defaultValue(runtime: Runtime): Value {
+        return this.init ? this.init.evaluate(runtime) : Value.null
+    }
+}
+
+export class Value {
+
+    static dummy = new Value(SplashClass.object)
+    static void = new Value(DummySplashType.void)
+    static null = new Value(DummySplashType.null)
+
+    fields: {[name: string]: Value} = {}
+
+    constructor(public type: SplashType, runtime?: Runtime) {
+        if (runtime) {
+            let r = runtime.inClassInstance(this)
+            for (let m of type.members) {
+                if (m instanceof Field) {
+                    this.fields[m.name] = m.defaultValue(r)
+                }
+            }
+        }
+    }
+
     invokeMethod(runtime: Runtime, name: string, ...params: Value[]): Value {
-        let methods = this.type.getMethods(name)
-            .filter(m=>allParamsMatch(m.params,params))
+        let methods = this.type.getValidMethod(name,...params)
         
-        return methods[0].invoke(runtime,...params)
+        return methods.invoke(runtime,this,...params)
     }
 
     invoke(runtime: Runtime, ...params: Value[]) {
@@ -202,11 +280,21 @@ export class Value {
             .filter(m=>m.modifiers.has('invoker'))
             .filter(m=>allParamsMatch(m.params, params))
         
-        return invoker[0].invoke(runtime,...params)
+        return invoker[0].invoke(runtime,this,...params)
     }
 
     get(field: string) {
         return this.fields[field]
+    }
+
+    invokeBinOperator(runtime: Runtime, op: BinaryOperator, other: Value): Value {
+        let method = this.type.getBinaryOperation(op,other.type)
+        return method?.invoke(runtime, this, other) || Value.dummy
+    }
+
+    invokeUnaryOperator(runtime: Runtime, op: UnaryOperator): Value {
+        let method = this.type.getUnaryOperation(op)
+        return method?.invoke(runtime, this) || Value.dummy
     }
 }
 

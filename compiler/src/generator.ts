@@ -1,5 +1,6 @@
-import { Value } from "./oop";
-import { BinaryOperator } from "./operators";
+import { Expression } from "./ast";
+import { Parameter, SplashType, Value } from "./oop";
+import { BinaryOperator, UnaryOperator } from "./operators";
 import { Runtime } from "./runtime";
 
 
@@ -29,9 +30,10 @@ export class GeneratedBlock extends GeneratedStatement {
 }
 
 
-export class SplashScript extends GeneratedBlock {
+export class SplashScript extends Generated {
 
-    
+    functions: GenFunction[] = []
+    vars: GenVarDeclaration[] = []
 
 }
 
@@ -47,6 +49,18 @@ export class GenVarDeclaration extends GeneratedStatement {
     
 }
 
+export class GenFunction extends GeneratedStatement {
+
+    constructor(public name: string, public retType: SplashType, public params: Parameter[], public body?: GeneratedBlock) {
+        super()
+    }
+
+    run(runtime: Runtime): void {
+        
+    }
+
+}
+
 export abstract class GeneratedExpression extends Generated {
     abstract evaluate(runtime: Runtime): Value
 }
@@ -58,8 +72,7 @@ export class GeneratedBinary extends GeneratedExpression {
     }
 
     evaluate(runtime: Runtime): Value {
-        let name = Object.entries(BinaryOperator).find(e=>e[1] == this.op)?.[0] || ''
-        return this.left.evaluate(runtime).invokeMethod(runtime,name,this.right.evaluate(runtime))
+        return this.left.evaluate(runtime).invokeBinOperator(runtime,this.op,this.right.evaluate(runtime))
     }
 
 }
@@ -116,4 +129,14 @@ export class GenVarAccess extends GeneratedExpression {
     evaluate(runtime: Runtime): Value {
         return runtime.getVariable(this.name)
     }
+}
+
+export class GeneratedUnary extends GeneratedExpression {
+    constructor(private expr: GeneratedExpression, private op: UnaryOperator) {
+        super()
+    }
+    evaluate(runtime: Runtime): Value {
+        return this.expr.evaluate(runtime).invokeUnaryOperator(runtime,this.op)
+    }
+    
 }
