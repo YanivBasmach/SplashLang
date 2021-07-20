@@ -8,6 +8,8 @@ export class Processor {
     variables: VariableFrame[] = [{}]
     types: SplashType[] = []
     functions: SimpleFunction[] = []
+    currentFunction: SimpleFunction | MethodNode | undefined
+    hasReturn = false
 
     constructor(public root: RootNode) {
 
@@ -33,6 +35,10 @@ export class Processor {
         if (this.variables.length > 0) {
             this.variables[this.variables.length-1][name.value] = new Variable(name, type)
         }
+    }
+
+    validateType(token: TypeToken) {
+
     }
 
     resolveType(token: TypeToken): SplashType {

@@ -64,3 +64,8 @@ export class Runtime {
     }
     
 }
+
+
+export class Returned extends Error {
+
+}

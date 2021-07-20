@@ -1,9 +1,10 @@
-import { TextRange, Token } from "./tokenizer";
+import { TextRange, Token, TokenType } from "./tokenizer";
 import { Parser } from "./parser";
-import { Parameter, SplashClass, SplashComboType, SplashType, TypeToken } from "./oop";
+import { DummySplashType, Parameter, SplashClass, SplashComboType, SplashType, TypeToken } from "./oop";
 import { Processor } from "./processor";
-import { GenCall, GenCallAccess, Generated, GeneratedBinary, GeneratedBlock, GeneratedExpression, GeneratedStatement, GeneratedUnary, GenFieldAccess, GenFunction, GenVarDeclaration, SplashScript } from "./generator";
+import { GenArrayCreation, GenCall, GenCallAccess, Generated, GeneratedBinary, GeneratedBlock, GeneratedExpression, GeneratedLiteral, GeneratedReturn, GeneratedStatement, GeneratedUnary, GenFieldAccess, GenFunction, GenVarDeclaration, SplashScript } from "./generator";
 import { BinaryOperator, UnaryOperator } from "./operators";
+import { SplashArray, SplashInt, SplashString } from "./primitives";
 
 
 export abstract class ASTNode {
@@ -188,7 +189,7 @@ export class UnaryExpression extends Expression {
         if (uop) {
             return uop.retType
         }
-        proc.error(this.op.range, "Operator " + this.op.value + " cannot be applied to " + type.)
+        proc.error(this.op.range, "Operator " + this.op.value + " cannot be applied to " + type)
         return SplashClass.object
     }
     generate(proc: Processor): GeneratedExpression {
@@ -197,21 +198,65 @@ export class UnaryExpression extends Expression {
 }
 
 export class LiteralExpression extends Expression {
+    
     constructor(public token: Token) {
         super('literal_expression', token.range)
+    }
+
+    getResultType(proc: Processor): SplashType {
+        switch (this.token.type) {
+            case TokenType.int:
+                return SplashInt.instance
+            case TokenType.string:
+                return SplashString.instance
+        }
+        return SplashClass.object
+    }
+    generate(proc: Processor): GeneratedExpression {
+        return new GeneratedLiteral(this.token.type, this.token.value)
     }
 }
 
 export class InvalidExpression extends Expression {
+    
     constructor() {
         super('invalid_expression', TextRange.end)
+    }
+
+    getResultType(proc: Processor): SplashType {
+        return SplashClass.object
+    }
+    generate(proc: Processor): GeneratedExpression {
+        return GeneratedLiteral.invalid
     }
 }
 
 export class ArrayExpression extends Expression {
+    
     constructor(public values: ExpressionList) {
         super('array_expression', values.range)
     }
+
+    getResultType(proc: Processor): SplashType {
+        let valueType: SplashType = SplashClass.object
+        for (let v of this.values.values) {
+            let t = v.getResultType(proc)
+            if (valueType == SplashClass.object) {
+                valueType = t
+            } else if (valueType != t) {
+                if (valueType instanceof SplashComboType) {
+                    valueType = new SplashComboType([t,...valueType.types])
+                } else {
+                    valueType = new SplashComboType([valueType,t])
+                }
+            }
+        }
+        return SplashArray.of(valueType)
+    }
+    generate(proc: Processor): GeneratedExpression {
+        return new GenArrayCreation(this.values.generate(proc))
+    }
+    
 }
 
 export class Assignment extends Statement {
@@ -331,7 +376,7 @@ export class ParameterNode extends ASTNode {
     }
 
     process(proc: Processor) {
-        this.type.validate(proc)
+        proc.validateType(this.type)
         if (this.vararg && this.defValue) {
             proc.error(this.name.range, "A parameter cannot be both vararg and have a default value")
         }
@@ -398,7 +443,25 @@ export class SimpleFunction extends Statement {
 }
 
 export class ReturnStatement extends Statement {
+    
     constructor(label: TextRange, public expr: Expression | undefined) {
         super('return',label)
+    }
+
+    process(proc: Processor): void {
+        if (this.expr) {
+            let type = this.expr?.getResultType(proc)
+            if (proc.currentFunction) {
+                if (!proc.currentFunction.type.canAccept(type)) {
+                    proc.error(this.expr?.range, "Expression does not match the function's return type")
+                }
+            }
+        } else if (proc.currentFunction && proc.currentFunction.retType != DummySplashType.void) {
+            proc.error(this.label, "Function should return a value")
+        }
+        proc.hasReturn = true
+    }
+    generate(proc: Processor): GeneratedStatement {
+        return new GeneratedReturn(this.expr?.generate(proc))
     }
 }

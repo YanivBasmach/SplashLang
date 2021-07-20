@@ -1,7 +1,9 @@
 import { Expression } from "./ast";
-import { Parameter, SplashType, Value } from "./oop";
+import { Parameter, SplashClass, SplashComboType, SplashType, Value } from "./oop";
 import { BinaryOperator, UnaryOperator } from "./operators";
-import { Runtime } from "./runtime";
+import { SplashArray, SplashInt, SplashString } from "./primitives";
+import { Returned, Runtime } from "./runtime";
+import { TokenType } from "./tokenizer";
 
 
 export abstract class Generated {
@@ -22,8 +24,14 @@ export class GeneratedBlock extends GeneratedStatement {
     }
 
     run(runtime: Runtime) {
-        for (let s of this.statements) {
-            s.run(runtime)
+        try {
+            for (let s of this.statements) {
+                s.run(runtime)
+            }
+        } catch (r) {
+            if (r instanceof Returned) {
+                
+            }
         }
     }
     
@@ -62,6 +70,7 @@ export class GenFunction extends GeneratedStatement {
 }
 
 export abstract class GeneratedExpression extends Generated {
+
     abstract evaluate(runtime: Runtime): Value
 }
 
@@ -137,6 +146,78 @@ export class GeneratedUnary extends GeneratedExpression {
     }
     evaluate(runtime: Runtime): Value {
         return this.expr.evaluate(runtime).invokeUnaryOperator(runtime,this.op)
+    }
+    
+}
+
+export class GeneratedLiteral extends GeneratedExpression {
+    static invalid = new GeneratedLiteral(TokenType.invalid, "")
+
+    constructor(public type: TokenType, public value: string) {
+        super()
+    }
+    evaluate(runtime: Runtime): Value {
+        switch (this.type) {
+            case TokenType.int:
+                return new Value(SplashInt.instance, parseInt(this.value))
+            case TokenType.string:
+                return new Value(SplashString.instance, this.value)
+        }
+        return Value.null
+    }
+    
+}
+
+export class GenStringLiteral extends GeneratedExpression {
+    
+    constructor(public nodes: GeneratedExpression[]) {
+        super()
+    }
+
+    evaluate(runtime: Runtime): Value {
+        let str = "";
+        for (let n of this.nodes) {
+            let v = n.evaluate(runtime)
+            if (v.type == SplashString.instance) {
+                str += v.inner
+            } else {
+                str += v.toString(runtime)
+            }
+        }
+        return new Value(SplashString.instance, str)
+    }
+}
+
+export class GenArrayCreation extends GeneratedExpression {
+    constructor(public values: GeneratedExpression[]) {
+        super()
+    }
+    evaluate(runtime: Runtime): Value {
+        let vals = this.values.map(v=>v.evaluate(runtime))
+        let valueType: SplashType = SplashClass.object
+        for (let v of vals) {
+            if (valueType == SplashClass.object) {
+                valueType = v.type
+            } else if (valueType != v.type) {
+                if (valueType instanceof SplashComboType) {
+                    valueType = new SplashComboType([v.type,...valueType.types])
+                } else {
+                    valueType = new SplashComboType([valueType,v.type])
+                }
+            }
+        }
+        return new Value(SplashArray.of(valueType), vals)
+    }
+    
+}
+
+export class GeneratedReturn extends GeneratedStatement {
+    constructor(public expr?: GeneratedExpression) {
+        super()
+    }
+    run(runtime: Runtime): void {
+        runtime.returnValue = this.expr?.evaluate(runtime)
+        throw new Returned()
     }
     
 }

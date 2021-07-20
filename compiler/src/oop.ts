@@ -3,7 +3,8 @@ import { GeneratedBlock, GeneratedExpression, SplashScript } from "./generator";
 import { BinaryOperator, UnaryOperator } from "./operators";
 import { Runtime } from "./runtime";
 import { TextRange, Token } from "./tokenizer";
-
+import { NativeMethods } from './native'
+import { SplashFunctionType } from "./primitives";
 
 export abstract class SingleTypeToken {
     constructor(public range: TextRange, public optional: boolean) {
@@ -49,6 +50,10 @@ export abstract class SplashType {
 
     get methods(): Method[] {
         return this.members.filter(m=>m instanceof Method).map(m=>m as Method)
+    }
+
+    get defaultValue(): Value {
+        return Value.null
     }
 
     abstract get members(): Member[]
@@ -139,18 +144,6 @@ export class SplashParameterizedType extends SplashType {
     
 }
 
-export class SplashFunctionType extends SplashType {
-
-    constructor(public paramTypes: SplashType[], public retType: SplashType) {
-        super()
-    }
-
-    get members(): Member[] {
-        return []
-    }
-    
-}
-
 export class SplashComboType extends SplashType {
 
     constructor(public types: SplashType[]) {
@@ -164,7 +157,6 @@ export class SplashComboType extends SplashType {
 }
 
 export interface Member {
-    cls: SplashClass
     name: string
     type: SplashType
 }
@@ -205,7 +197,11 @@ export class Method extends ClassExecutable implements Member {
                 r.setVariable(p.name,pv)
             }
         }
-        this.body?.run(r)
+        if (this.body) {
+            this.body?.run(r)
+        } else {
+            NativeMethods.invoke(r, this.cls, this.name, params)
+        }
         return r.returnValue || Value.void
     }
 
@@ -224,6 +220,20 @@ export class Parameter {
             return params[params.length - 1]
         }
     }
+
+    static initParams(runtime: Runtime, params: Parameter[], values: Value[]) {
+        for (let i = 0; i < params.length; i++) {
+            let p = params[i]
+            if (p.vararg) {
+                let vals = values.slice(i,values.length)
+                runtime.setVariable(p.name, new Value(p.type, vals))
+            } else if (i < values.length) {
+                runtime.setVariable(p.name, values[i])
+            } else {
+                runtime.setVariable(p.name, p.defValue?.evaluate(runtime) || Value.null)
+            }
+        }
+    }
 }
 
 export class Constructor extends ClassExecutable {
@@ -234,39 +244,39 @@ export class Constructor extends ClassExecutable {
 
     invoke(runtime: Runtime, thisArg?: Value, ...params: Value[]): Value {
         let r = runtime.inClassStatic(this.cls)
-        let val = new Value(this.cls,r)
-        let 
+        let val = new Value(this.cls,{})
+        let newRt = r.inClassInstance(val)
+        for (let m of this.cls.members) {
+            if (m instanceof Field) {
+                val.set(m.name,m.defaultValue(r))
+            }
+        }
+        
+        Parameter.initParams(newRt, this.params, params)
+        this.body.run(newRt)
+        return val
     }
 
 }
 
 export class Field implements Member {
-    constructor(public cls: SplashClass, public name: string, public modifiers: ModifierList, public type: SplashType, public init?: GeneratedExpression) {
+    constructor(public name: string, public modifiers: ModifierList, public type: SplashType, public init?: GeneratedExpression) {
 
     }
 
     defaultValue(runtime: Runtime): Value {
-        return this.init ? this.init.evaluate(runtime) : Value.null
+        return this.init ? this.init.evaluate(runtime) : this.type.defaultValue
     }
 }
 
 export class Value {
 
-    static dummy = new Value(SplashClass.object)
-    static void = new Value(DummySplashType.void)
-    static null = new Value(DummySplashType.null)
+    static dummy = new Value(SplashClass.object,{})
+    static void = new Value(DummySplashType.void,undefined)
+    static null = new Value(DummySplashType.null,null)
 
-    fields: {[name: string]: Value} = {}
-
-    constructor(public type: SplashType, runtime?: Runtime) {
-        if (runtime) {
-            let r = runtime.inClassInstance(this)
-            for (let m of type.members) {
-                if (m instanceof Field) {
-                    this.fields[m.name] = m.defaultValue(r)
-                }
-            }
-        }
+    constructor(public type: SplashType, public inner: any) {
+        
     }
 
     invokeMethod(runtime: Runtime, name: string, ...params: Value[]): Value {
@@ -284,7 +294,11 @@ export class Value {
     }
 
     get(field: string) {
-        return this.fields[field]
+        return this.inner[field]
+    }
+
+    set(field: string, value: Value) {
+        this.inner[field] = value
     }
 
     invokeBinOperator(runtime: Runtime, op: BinaryOperator, other: Value): Value {
@@ -295,6 +309,10 @@ export class Value {
     invokeUnaryOperator(runtime: Runtime, op: UnaryOperator): Value {
         let method = this.type.getUnaryOperation(op)
         return method?.invoke(runtime, this) || Value.dummy
+    }
+
+    toString(runtime: Runtime) {
+        return this.invokeMethod(runtime, 'toString')
     }
 }
 
