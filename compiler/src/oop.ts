@@ -3,8 +3,8 @@ import { GeneratedBlock, GeneratedExpression, SplashScript } from "./generator";
 import { BinaryOperator, UnaryOperator } from "./operators";
 import { Runtime } from "./runtime";
 import { TextRange, Token } from "./tokenizer";
-import { NativeMethods } from './native'
 import { SplashFunctionType, SplashString } from "./primitives";
+import { NativeFunctions } from "./native";
 
 export abstract class SingleTypeToken {
     constructor(public range: TextRange, public optional: boolean) {
@@ -47,6 +47,10 @@ export class TypeToken {
 
 
 export abstract class SplashType {
+
+    constructor(public name: string) {
+
+    }
 
     get methods(): Method[] {
         return this.members.filter(m=>m instanceof Method).map(m=>m as Method)
@@ -97,7 +101,7 @@ export abstract class SplashType {
 
     getValidMethod(name: string, ...params: Value[]) {
         return this.getMethods(name)
-            .filter(m=>allParamsMatch(m.params,params))[0]
+            .filter(m=>Parameter.allParamsMatch(m.params,params))[0]
     }
 
     canAssignTo(type: SplashType) {
@@ -110,8 +114,8 @@ export class DummySplashType extends SplashType {
     static void = new DummySplashType('void')
     static null = new DummySplashType('null')
 
-    constructor(public name: string) {
-        super()
+    constructor(name: string) {
+        super(name)
     }
     get members(): Member[] {
         return []
@@ -126,8 +130,8 @@ export class SplashClass extends SplashType {
 
     staticFields: {[name: string]: Value} = {}
 
-    constructor(public name: string) {
-        super()
+    constructor(name: string) {
+        super(name)
     }
 
     get members() {
@@ -139,7 +143,7 @@ export class SplashParameterizedType extends SplashType {
     
 
     constructor(public base: SplashType, public params: SplashType[]) {
-        super()
+        super(base.name)
     }
 
     get members(): Member[] {
@@ -155,7 +159,7 @@ export class SplashParameterizedType extends SplashType {
 export class SplashComboType extends SplashType {
 
     constructor(public types: SplashType[]) {
-        super()
+        super('union')
     }
 
     get members(): Member[] {
@@ -202,19 +206,20 @@ export class Method extends ClassExecutable implements Member {
         } else {
             return Value.null
         }
-        for (let i = 0; i < params.length; i++) {
-            let pv = params[i]
-            let p = Parameter.getParamAt(i,this.params)
-            if (p) {
-                r.setVariable(p.name,pv)
-            }
-        }
         if (this.body) {
-            this.body?.run(r)
+            for (let i = 0; i < params.length; i++) {
+                let pv = params[i]
+                let p = Parameter.getParamAt(i,this.params)
+                if (p) {
+                    r.setVariable(p.name,pv)
+                }
+            }
+            this.body.run(r)
+            return r.returnValue || Value.void
         } else {
-            NativeMethods.invoke(r, this.cls, this.name, params)
+            return NativeFunctions.invokeMethod(r, this.cls, this.name, params)
         }
-        return r.returnValue || Value.void
+        
     }
 
 }
@@ -245,6 +250,10 @@ export class Parameter {
                 runtime.setVariable(p.name, p.defValue?.evaluate(runtime) || Value.null)
             }
         }
+    }
+
+    static allParamsMatch(params: Parameter[], values: Value[]) {
+
     }
 }
 
@@ -300,7 +309,7 @@ export class Value {
     invoke(runtime: Runtime, ...params: Value[]) {
         let invoker = this.type.getMethods('invoker')
             .filter(m=>m.modifiers.has('invoker'))
-            .filter(m=>allParamsMatch(m.params, params))
+            .filter(m=>Parameter.allParamsMatch(m.params, params))
         
         return invoker[0].invoke(runtime,this,...params)
     }
@@ -352,6 +361,3 @@ export class Value {
     }
 }
 
-export function allParamsMatch(params: Parameter[], values: Value[]) {
-
-}

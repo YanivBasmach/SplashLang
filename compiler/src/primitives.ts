@@ -6,7 +6,7 @@ import { Runtime } from "./runtime"
 export class SplashFunctionType extends SplashType {
 
     constructor(public paramTypes: SplashType[], public retType: SplashType) {
-        super()
+        super('function')
     }
 
     get members(): Member[] {
@@ -27,7 +27,7 @@ export abstract class SplashPrimitive extends SplashType {
 
 export class SplashInt extends SplashPrimitive {
     
-    static instance = new SplashInt()
+    static instance = new SplashInt('int')
     
     get defaultValue(): Value {
         return new Value(this, 0)
@@ -37,7 +37,7 @@ export class SplashInt extends SplashPrimitive {
 
 export class SplashArray extends SplashPrimitive {
 
-    static instance = new SplashArray()
+    static instance = new SplashArray('array')
 
     get defaultValue(): Value {
         return new Value(this, [])
@@ -55,14 +55,14 @@ export class SplashArray extends SplashPrimitive {
 
 export class SplashString extends SplashPrimitive {
     
-    static instance = new SplashString()
+    static instance = new SplashString('string')
 
     get defaultValue(): Value {
         return new Value(this, "")
     }
 
     @Native()
-    charArray(r: Runtime, str: Value) {
+    chars(r: Runtime, str: Value) {
         return new Value(SplashArray.of(this),(str.inner as string).split('').map(v=>new Value(this,v)))
     }
 

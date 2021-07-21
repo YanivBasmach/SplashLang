@@ -2,7 +2,7 @@ import { TextRange, Token, TokenType } from "./tokenizer";
 import { Parser } from "./parser";
 import { DummySplashType, Parameter, SplashClass, SplashComboType, SplashType, TypeToken } from "./oop";
 import { Processor } from "./processor";
-import { GenArrayCreation, GenAssignableExpression, GenAssignment, GenCall, GenCallAccess, Generated, GeneratedBinary, GeneratedBlock, GeneratedExpression, GeneratedLiteral, GeneratedReturn, GeneratedStatement, GeneratedUnary, GenFieldAccess, GenFunction, GenVarAccess, GenVarDeclaration, SplashScript } from "./generator";
+import { GenArrayCreation, GenAssignableExpression, GenAssignment, GenCall, GenCallAccess, GenClassDecl, Generated, GeneratedBinary, GeneratedBlock, GeneratedExpression, GeneratedLiteral, GeneratedReturn, GeneratedStatement, GeneratedUnary, GenFieldAccess, GenFunction, GenVarAccess, GenVarDeclaration, SplashScript } from "./generator";
 import { AssignmentOperator, BinaryOperator, UnaryOperator } from "./operators";
 import { SplashArray, SplashFunctionType, SplashInt, SplashString } from "./primitives";
 
@@ -497,7 +497,7 @@ export class ReturnStatement extends Statement {
         if (this.expr) {
             let type = this.expr?.getResultType(proc)
             if (proc.currentFunction) {
-                if (!proc.currentFunction.type.canAccept(type)) {
+                if (!proc.currentFunction.retType.canAssignTo(type)) {
                     proc.error(this.expr?.range, "Expression does not match the function's return type")
                 }
             }
@@ -509,4 +509,50 @@ export class ReturnStatement extends Statement {
     generate(proc: Processor): GeneratedStatement {
         return new GeneratedReturn(this.expr?.generate(proc))
     }
+}
+
+export class MethodNode extends Statement {
+
+    index(proc: Processor) {
+        if (proc.currentClass) {
+            proc.currentClass.methods.push()
+        }
+    }
+
+    process(proc: Processor): void {
+        
+    }
+    generate(proc: Processor): GeneratedStatement {
+        throw new Error("Method not implemented.");
+    }
+    
+}
+
+export class ClassDeclaration extends Statement {
+
+    type: SplashClass
+
+    constructor(public name: Token, public body: CodeBlock) {
+        super('class_decl',name.range)
+        this.type = new SplashClass(name.value)
+    }
+
+    index(proc: Processor) {
+        if (proc.getTypeByName(this.name.value)) {
+            proc.error(this.name.range, "Duplicate type " + this.name.value)
+        } else {
+            proc.types.push(this.type)
+        }
+    }
+
+    process(proc: Processor): void {
+        proc.currentClass = this.type
+        this.body.index(proc)
+        this.body.process(proc)
+        proc.currentClass = undefined
+    }
+    generate(proc: Processor): GenClassDecl {
+        return new GenClassDecl(this.type, this.body.generate(proc))
+    }
+    
 }

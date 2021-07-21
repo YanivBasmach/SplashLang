@@ -1,5 +1,5 @@
 import { SplashScript } from "./generator";
-import { Field, SplashClass, Value } from "./oop";
+import { Field, Parameter, SplashClass, Value } from "./oop";
 
 
 export class Runtime {
@@ -28,7 +28,12 @@ export class Runtime {
                 return m.invoke(this,this.currentInstance,...params)
             }
         }
-        this.script.functions
+        for (let f of this.script.functions) {
+            if (f.name == name && Parameter.allParamsMatch(f.params, params)) {
+                return f.invoke(new Runtime(this.script), ...params)
+            } 
+        }
+        return Value.null
     }
 
     getVariable(name: string): Value {
@@ -40,7 +45,7 @@ export class Runtime {
             }
         }
         if (this.currentInstance) {
-            let f = this.currentInstance.get(name)
+            let f = this.currentInstance.get(this,name)
             if (f) {
                 return f
             }

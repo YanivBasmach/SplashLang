@@ -1,0 +1,55 @@
+import splash.ui
+
+class ShapesWindow extends Window {
+    
+    Panel controlsPanel
+    Panel drawingBoard
+    SelectMenu shapeTypeSelect
+    NumberField[][] locationFields
+    NumberField widthField
+    NumberField heightField
+
+    constructor() {
+        title = "Shapes"
+        onClose = EXIT
+        
+        controlsPanel = Panel()
+        drawingBoard = Panel()
+
+        shapeTypeSelect = SelectMenu("Shape Type",["Rectangle","Ellipse","Line","Triangle"]) {
+            changed(string val) {
+                switch (val) {
+                    locationFields[].enable()
+                    case "Rectangle":
+                        locationFields[1..2].disable()
+                        widthField.enable()
+                        heightField.enable()
+                    case "Ellipse":
+                        locationFields[2].disable()
+                }
+            }
+        }
+
+        controlsPanel.add(shapeTypeSelect)
+
+        locationFields = matrix(3,2,(i,j)=>[NumberField("Location {i} x:") {
+            minValue = 0
+            decimal = false
+            default = 0
+        },NumberField("Location {i} y:") {
+            minValue = 0
+            decimal = false
+            default = 0
+        })
+
+        controlsPanel.addAll(locationFields)
+
+
+
+        addPanel(controlsPanel, LEFT)
+        addPanel(drawingBoard, RIGHT)
+
+        
+    }
+
+}

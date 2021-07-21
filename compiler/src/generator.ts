@@ -1,4 +1,5 @@
 import { Expression } from "./ast";
+import { NativeFunctions } from "./native";
 import { Parameter, SplashClass, SplashComboType, SplashType, Value } from "./oop";
 import { AssignmentOperator, BinaryOperator, UnaryOperator } from "./operators";
 import { SplashArray, SplashInt, SplashString } from "./primitives";
@@ -65,6 +66,23 @@ export class GenFunction extends GeneratedStatement {
 
     run(runtime: Runtime): void {
         
+    }
+
+    invoke(runtime: Runtime, ...params: Value[]): Value {
+        let r = new Runtime(runtime.script)
+        if (this.body) {
+            for (let i = 0; i < params.length; i++) {
+                let pv = params[i]
+                let p = Parameter.getParamAt(i,this.params)
+                if (p) {
+                    r.setVariable(p.name,pv)
+                }
+            }
+            this.body.run(r)
+            return r.returnValue || Value.void
+        } else {
+            return NativeFunctions.invokeFunction(r, this.name, params)
+        }
     }
 
 }
@@ -271,6 +289,17 @@ export class GeneratedReturn extends GeneratedStatement {
     run(runtime: Runtime): void {
         runtime.returnValue = this.expr?.evaluate(runtime)
         throw new Returned()
+    }
+    
+}
+
+export class GenClassDecl extends GeneratedStatement {
+    constructor(public cls: SplashClass, public body: GeneratedBlock) {
+        super()
+    }
+
+    run(runtime: Runtime): void {
+        
     }
     
 }
