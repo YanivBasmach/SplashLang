@@ -1,6 +1,6 @@
 import { Expression } from "./ast";
 import { Parameter, SplashClass, SplashComboType, SplashType, Value } from "./oop";
-import { BinaryOperator, UnaryOperator } from "./operators";
+import { AssignmentOperator, BinaryOperator, UnaryOperator } from "./operators";
 import { SplashArray, SplashInt, SplashString } from "./primitives";
 import { Returned, Runtime } from "./runtime";
 import { TokenType } from "./tokenizer";
@@ -74,6 +74,20 @@ export abstract class GeneratedExpression extends Generated {
     abstract evaluate(runtime: Runtime): Value
 }
 
+export abstract class GenAssignableExpression extends GeneratedExpression {
+
+    evaluate(runtime: Runtime): Value {
+        return this.evalSelf(runtime, this.evalParent(runtime))
+    }
+
+    abstract assign(runtime: Runtime, parent: Value | undefined, value: Value): void
+
+    abstract evalParent(runtime: Runtime): Value | undefined
+
+    abstract evalSelf(runtime: Runtime, parent?: Value): Value
+
+}
+
 export class GeneratedBinary extends GeneratedExpression {
 
     constructor(private left: GeneratedExpression, private op: BinaryOperator, private right: GeneratedExpression) {
@@ -83,6 +97,7 @@ export class GeneratedBinary extends GeneratedExpression {
     evaluate(runtime: Runtime): Value {
         return this.left.evaluate(runtime).invokeBinOperator(runtime,this.op,this.right.evaluate(runtime))
     }
+    
 
 }
 
@@ -118,26 +133,64 @@ export class GenCall extends GeneratedStatement {
     
 }
 
-export class GenFieldAccess extends GeneratedExpression {
-
+export class GenFieldAccess extends GenAssignableExpression {
+    
     constructor(public expr: GeneratedExpression, public field: string) {
         super()
     }
 
-    evaluate(runtime: Runtime): Value {
-        return this.expr.evaluate(runtime).get(this.field)
+    assign(runtime: Runtime, parent: Value | undefined, value: Value): void {
+        if (parent) {
+            parent.set(runtime, this.field, value)
+        }
+    }
+    evalParent(runtime: Runtime): Value | undefined {
+        return this.expr.evaluate(runtime)
+    }
+    evalSelf(runtime: Runtime, parent?: Value): Value {
+        return parent?.get(runtime, this.field)
     }
     
 }
 
-export class GenVarAccess extends GeneratedExpression {
+export class GenVarAccess extends GenAssignableExpression {
+    
     constructor(public name: string) {
         super()
     }
 
-    evaluate(runtime: Runtime): Value {
+    assign(runtime: Runtime, parent: Value | undefined, value: Value): void {
+        runtime.setVariable(this.name, value)
+    }
+    evalParent(runtime: Runtime): Value | undefined {
+        return
+    }
+    evalSelf(runtime: Runtime, parent?: Value): Value {
         return runtime.getVariable(this.name)
     }
+}
+
+export class GenAssignment extends GeneratedStatement {
+
+    constructor(public variable: GenAssignableExpression, public op: AssignmentOperator, public expr: GeneratedExpression) {
+        super()
+    }
+
+    run(runtime: Runtime): void {
+        let parent = this.variable.evalParent(runtime)
+        let val = this.expr.evaluate(runtime);
+        let toAssign: Value
+        
+        if (this.op == AssignmentOperator.set) {
+            toAssign = val
+        } else {
+            let self = this.variable.evalSelf(runtime)
+            toAssign = self.invokeBinOperator(runtime, this.op.substring(1) as BinaryOperator, val)
+        }
+
+        this.variable.assign(runtime, parent, toAssign)
+    }
+    
 }
 
 export class GeneratedUnary extends GeneratedExpression {

@@ -4,7 +4,7 @@ import { BinaryOperator, UnaryOperator } from "./operators";
 import { Runtime } from "./runtime";
 import { TextRange, Token } from "./tokenizer";
 import { NativeMethods } from './native'
-import { SplashFunctionType } from "./primitives";
+import { SplashFunctionType, SplashString } from "./primitives";
 
 export abstract class SingleTypeToken {
     constructor(public range: TextRange, public optional: boolean) {
@@ -100,6 +100,10 @@ export abstract class SplashType {
             .filter(m=>allParamsMatch(m.params,params))[0]
     }
 
+    canAssignTo(type: SplashType) {
+        return this == type
+    }
+
 }
 
 export class DummySplashType extends SplashType {
@@ -141,6 +145,10 @@ export class SplashParameterizedType extends SplashType {
     get members(): Member[] {
         return this.base.members
     }
+
+    canAssignTo(type: SplashType) {
+        return this.base.canAssignTo(type)
+    }
     
 }
 
@@ -152,6 +160,10 @@ export class SplashComboType extends SplashType {
 
     get members(): Member[] {
         return this.types.map(t=>t.members).reduce((prev,curr)=>prev.concat(curr),[])
+    }
+
+    canAssignTo(type: SplashType) {
+        return this.types.find(t=>t.canAssignTo(type)) !== undefined
     }
 
 }
@@ -248,7 +260,7 @@ export class Constructor extends ClassExecutable {
         let newRt = r.inClassInstance(val)
         for (let m of this.cls.members) {
             if (m instanceof Field) {
-                val.set(m.name,m.defaultValue(r))
+                val.set(newRt,m.name,m.defaultValue(r))
             }
         }
         
@@ -280,9 +292,9 @@ export class Value {
     }
 
     invokeMethod(runtime: Runtime, name: string, ...params: Value[]): Value {
-        let methods = this.type.getValidMethod(name,...params)
+        let method = this.type.getValidMethod(name,...params)
         
-        return methods.invoke(runtime,this,...params)
+        return method.invoke(runtime,this,...params)
     }
 
     invoke(runtime: Runtime, ...params: Value[]) {
@@ -293,11 +305,35 @@ export class Value {
         return invoker[0].invoke(runtime,this,...params)
     }
 
-    get(field: string) {
+    getAccessor() {
+        return this.type.getMethods('accessor')
+            .filter(m=>m.modifiers.has('accessor'))
+            .filter(m=>m.params.length == 1 && m.params[0].type == SplashString.instance)
+            [0]
+    }
+
+    getAssigner(type: SplashType) {
+        return this.type.getMethods('assigner')
+            .filter(m=>m.modifiers.has('assigner'))
+            .filter(m=>m.params.length == 2 
+                && m.params[0].type == SplashString.instance
+                && type.canAssignTo(m.params[1].type))
+            [0]
+    }
+
+    get(runtime: Runtime, field: string) {
+        let acc = this.getAccessor()
+        if (acc) {
+            return acc.invoke(runtime, this, new Value(SplashString.instance, field))
+        }
         return this.inner[field]
     }
 
-    set(field: string, value: Value) {
+    set(runtime: Runtime, field: string, value: Value) {
+        let ass = this.getAssigner(value.type)
+        if (ass) {
+            ass.invoke(runtime, this, new Value(SplashString.instance, field), value)
+        }
         this.inner[field] = value
     }
 

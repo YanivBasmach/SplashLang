@@ -2,9 +2,9 @@ import { TextRange, Token, TokenType } from "./tokenizer";
 import { Parser } from "./parser";
 import { DummySplashType, Parameter, SplashClass, SplashComboType, SplashType, TypeToken } from "./oop";
 import { Processor } from "./processor";
-import { GenArrayCreation, GenCall, GenCallAccess, Generated, GeneratedBinary, GeneratedBlock, GeneratedExpression, GeneratedLiteral, GeneratedReturn, GeneratedStatement, GeneratedUnary, GenFieldAccess, GenFunction, GenVarDeclaration, SplashScript } from "./generator";
-import { BinaryOperator, UnaryOperator } from "./operators";
-import { SplashArray, SplashInt, SplashString } from "./primitives";
+import { GenArrayCreation, GenAssignableExpression, GenAssignment, GenCall, GenCallAccess, Generated, GeneratedBinary, GeneratedBlock, GeneratedExpression, GeneratedLiteral, GeneratedReturn, GeneratedStatement, GeneratedUnary, GenFieldAccess, GenFunction, GenVarAccess, GenVarDeclaration, SplashScript } from "./generator";
+import { AssignmentOperator, BinaryOperator, UnaryOperator } from "./operators";
+import { SplashArray, SplashFunctionType, SplashInt, SplashString } from "./primitives";
 
 
 export abstract class ASTNode {
@@ -42,6 +42,7 @@ export class RootNode extends ASTNode {
                 script.functions.push(s.generate(proc))
             }
         }
+        return script
     }
 }
 
@@ -260,13 +261,37 @@ export class ArrayExpression extends Expression {
 }
 
 export class Assignment extends Statement {
+    
     constructor(public variable: AssignableExpression, public op: Token, public expression: Expression) {
         super("assignment",op.range)
+    }
+
+    process(proc: Processor): void {
+        let v = this.variable.getResultType(proc)
+        let val = this.expression.getResultType(proc)
+        if (this.op.value == '=') {
+            if (!val.canAssignTo(v)) {
+                proc.error(this.expression.range, "Expression of type " + val + " cannot be assigned to " + v)
+            }
+        } else {
+            let binop = this.op.value.substring(1) as BinaryOperator
+            let opm = v.getBinaryOperation(binop, val)
+            if (opm) {
+                if (!opm.retType.canAssignTo(v)) {
+                    proc.error(this.op.range, "Expression of type " + val + " cannot be assigned by applying operator " + this.op.value + " with " + v)
+                }
+            } else {
+                proc.error(this.op.range, "Expression of type " + val + " cannot be applied to " + v + " with " + this.op.value)
+            }
+        }
+    }
+    generate(proc: Processor): GeneratedStatement {
+        return new GenAssignment(this.variable.generate(proc), this.op.value as AssignmentOperator, this.expression.generate(proc))
     }
 }
 
 export abstract class AssignableExpression extends Expression {
-    
+    abstract generate(proc: Processor): GenAssignableExpression
 }
 
 export class FieldAccess extends AssignableExpression {
@@ -284,14 +309,30 @@ export class FieldAccess extends AssignableExpression {
         proc.error(this.field.range, "Unknown member in type " + parentType)
         return SplashClass.object
     }
-    generate(proc: Processor): GeneratedExpression {
+    generate(proc: Processor): GenAssignableExpression {
         return new GenFieldAccess(this.parent.generate(proc),this.field.value)
     }
 }
 
 export class VariableAccess extends AssignableExpression {
+    
     constructor(public name: Token) {
         super("variable_access", name.range)
+    }
+
+    getResultType(proc: Processor): SplashType {
+        let v = proc.getVariable(this.name.value);
+        if (v) {
+            return v.type
+        } else {
+            let func = proc.functions.find(f=>f.name.value == this.name.value)
+            if (func) return func.toFunctionType(proc)
+        }
+        proc.error(this.name.range,"Unknown variable")
+        return SplashClass.object
+    }
+    generate(proc: Processor): GenAssignableExpression {
+        return new GenVarAccess(this.name.value)
     }
 }
 
@@ -329,7 +370,7 @@ export class CallStatement extends Statement {
     }
 }
 
-export type Modifier = 'private'|'protected'|'abstract'|'native'|'final'|'static'|'readonly'|'operator'|'iterator'|'get'|'set'|'indexer'|'accessor'|'invoker'
+export type Modifier = 'private'|'protected'|'abstract'|'native'|'final'|'static'|'readonly'|'operator'|'iterator'|'get'|'set'|'indexer'|'accessor'|'assigner'|'invoker'
 
 export class ModifierList extends ASTNode {
 
@@ -438,6 +479,10 @@ export class SimpleFunction extends Statement {
 
     generate(proc: Processor): GenFunction {
         return new GenFunction(this.name.value,proc.resolveType(this.retType),this.params.map(p=>p.generate(proc)),this.code?.generate(proc))
+    }
+
+    toFunctionType(proc: Processor): SplashFunctionType {
+        return new SplashFunctionType(this.params.map(p=>p.generate(proc).type),proc.resolveType(this.retType))
     }
 
 }
