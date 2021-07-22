@@ -1,33 +1,49 @@
-import { SplashType, Value } from "./oop";
-import { SplashArray } from "./primitives";
+import { Value } from "./oop";
+import { DummySplashType, SplashString, SplashType } from "./types";
 import { Runtime } from "./runtime";
 
-export interface NativeFunction {
-    inType?: SplashType
-    func: (r: Runtime, val: Value, ...args: Value[])=>Value
+interface NativeFunction {
+    name: string
+    retType: string
+    params: string[]
+    func: (r: Runtime, ...args: Value[])=>Value
 }
 
-const nativeFunctionRegistry: NativeFunction[] = []
+export const nativeFunctionRegistry: NativeFunction[] = []
 
-export function Native(isStatic: boolean = false) {
+function Native(retType: string, ...params: string[]) {
     return function(target: any, propKey: string, descriptor: PropertyDescriptor) {
-        
+        nativeFunctionRegistry.push({
+            name: propKey,
+            retType,
+            params,
+            func: (r,...args)=>{
+                return descriptor.value(r,...args)
+            }
+        })
     }
 }
 
-
-export function NativeDelegate(target: any, propKey: string, descriptor: PropertyDescriptor) {
-
-}
 
 export class NativeFunctions {
     static instance = new NativeFunctions()
 
     static invokeMethod(runtime: Runtime, type: SplashType, name: string, params: Value[]): Value {
-
+        return Value.null
     }
 
     static invokeFunction(runtime: Runtime, name: string, params: Value[]): Value {
+        for (let nf of nativeFunctionRegistry) {
+            if (nf.name == name) {
+                return nf.func(runtime, ...params)
+            }
+        }
+        return Value.null
+    }
 
+    @Native('void','string')
+    print(runtime: Runtime, str: Value) {
+        console.warn(str.inner)
     }
 }
+

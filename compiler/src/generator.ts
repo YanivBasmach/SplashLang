@@ -1,8 +1,8 @@
 import { Expression } from "./ast";
 import { NativeFunctions } from "./native";
-import { Parameter, SplashClass, SplashComboType, SplashType, Value } from "./oop";
+import { Parameter, Value } from "./oop";
 import { AssignmentOperator, BinaryOperator, UnaryOperator } from "./operators";
-import { SplashArray, SplashInt, SplashString } from "./primitives";
+import { SplashArray, SplashClass, SplashComboType, SplashInt, SplashString, SplashType } from "./types";
 import { Returned, Runtime } from "./runtime";
 import { TokenType } from "./tokenizer";
 
@@ -27,11 +27,14 @@ export class GeneratedBlock extends GeneratedStatement {
     run(runtime: Runtime) {
         try {
             for (let s of this.statements) {
+                console.log("running statement " + s.constructor.name)
                 s.run(runtime)
             }
-        } catch (r) {
-            if (r instanceof Returned) {
+        } catch (e) {
+            if (e instanceof Returned) {
                 
+            } else {
+                console.log(e)
             }
         }
     }
@@ -43,6 +46,18 @@ export class SplashScript extends Generated {
 
     functions: GenFunction[] = []
     vars: GenVarDeclaration[] = []
+    main?: GeneratedBlock
+
+    constructor(public name: string) {
+        super()
+    }
+
+    run(runtime: Runtime) {
+        if (this.main) {
+            console.info("Executing script " + this.name)
+            this.main.run(runtime)
+        }
+    }
 
 }
 

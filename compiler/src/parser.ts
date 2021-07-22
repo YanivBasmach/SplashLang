@@ -1,7 +1,7 @@
-import { ElseStatement, ArrayExpression, AssignableExpression, Assignment, BinaryExpression, CallAccess, CallStatement, CodeBlock, Expression, FieldAccess, IfStatement, InvalidExpression, LiteralExpression, MainBlock, RootNode, Statement, UnaryExpression, VarDeclaration, VariableAccess, ModifierList, ParameterNode, SimpleFunction, ReturnStatement, ExpressionList } from "./ast";
+import { ElseStatement, ArrayExpression, AssignableExpression, Assignment, BinaryExpression, CallAccess, CallStatement, CodeBlock, Expression, FieldAccess, IfStatement, InvalidExpression, LiteralExpression, MainBlock, RootNode, Statement, UnaryExpression, VarDeclaration, VariableAccess, ModifierList, ParameterNode, SimpleFunction, ReturnStatement, ExpressionList, StringExpression } from "./ast";
 import { BasicTypeToken, FunctionTypeToken, SingleTypeToken, TypeToken } from "./oop";
 import { AssignmentOperator, BinaryOperator } from "./operators";
-import { Position, TextRange, Token, Tokenizer, TokenType } from "./tokenizer";
+import { DelegateTokenizer, ExpressionSegment, LiteralSegment, Position, StringToken, TextRange, Token, Tokenizer, TokenType } from "./tokenizer";
 
 export class Parser {
 
@@ -258,7 +258,7 @@ export class Parser {
             if (name && this.expectValue('(')) {
                 let params = this.parseParameterList()
                 let code = this.parseBlock()
-                return new SimpleFunction(label.range, modifiers, name, params, code)
+                return new SimpleFunction(label.range, modifiers, name, retType, params, code)
             }
         }
     }
@@ -471,8 +471,17 @@ export class Parser {
 
     parsePrimaryExpression(): Expression {
         let expr: Expression
-        if (this.isNext(TokenType.int) || this.isNext(TokenType.string) || this.isNext(TokenType.float) || this.isValueNext('true','false')) {
+        if (this.isNext(TokenType.int) || this.isNext(TokenType.float) || this.isValueNext('true','false')) {
             expr = new LiteralExpression(this.next())
+        } else if (this.isNext(TokenType.string)) {
+            let tok = this.next() as StringToken
+            expr = new StringExpression(tok.range,tok.segments.map(s=>{
+                if (s instanceof ExpressionSegment) {
+                    return new Parser(this.file,new DelegateTokenizer(s.tokens)).parseExpression()
+                } else {
+                    return new LiteralExpression(Token.dummy('"' + (s as LiteralSegment).value + '"'))
+                }
+            }))
         } else if (this.isNext(TokenType.identifier)) {
             expr = new VariableAccess(this.next())
         } else if (this.skipValue('[')) {

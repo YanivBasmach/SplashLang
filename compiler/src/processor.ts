@@ -1,7 +1,9 @@
-import { ClassDeclaration, MethodNode, RootNode, SimpleFunction } from "./ast";
+import { ClassDeclaration, MethodNode, ModifierList, ParameterNode, RootNode, SimpleFunction } from "./ast";
 import { GenFunction } from "./generator";
-import { Method, SplashClass, SplashType, TypeToken } from "./oop";
+import { BasicTypeToken, FunctionTypeToken, Method, SingleTypeToken, TypeToken } from "./oop";
+import { DummySplashType, SplashClass, SplashComboType, SplashFunctionType, SplashType } from "./types";
 import { TextRange, Token } from "./tokenizer";
+import { nativeFunctionRegistry, NativeFunctions } from "./native";
 
 
 export class Processor {
@@ -13,8 +15,12 @@ export class Processor {
     currentFunction: GenFunction | Method | undefined
     hasReturn = false
 
-    constructor(public root: RootNode) {
-
+    constructor(public root: RootNode, public file: string) {
+        for (let f of nativeFunctionRegistry) { // todo: remove this and replace with reading of SDK
+            this.functions.push(new SimpleFunction(TextRange.end,new ModifierList(),Token.dummy(f.name),TypeToken.dummy(f.retType),f.params.map(p=>{
+                return new ParameterNode(Token.EOF,TypeToken.dummy(p))
+            })))
+        }
     }
 
     process() {
@@ -47,19 +53,31 @@ export class Processor {
 
     }
 
+    resolveTypeFromSingle(token: SingleTypeToken): SplashType {
+        if (token instanceof BasicTypeToken) {
+            return this.types.find(t=>t.name == token.base.value) || DummySplashType.null
+        } else if (token instanceof FunctionTypeToken) {
+            return new SplashFunctionType(token.params.map(p=>this.resolveType(p.type)),this.resolveType(token.returnType))
+        }
+        return DummySplashType.null
+    }
+
     resolveType(token: TypeToken): SplashType {
-        
+        if (token.options.length == 1) {
+            let st = token.options[0]
+            return this.resolveTypeFromSingle(st)
+        }
+        return new SplashComboType(token.options.map(t=>this.resolveTypeFromSingle(t)))
     }
 
     getVariable(name: string) {
-        for (let i = this.variables.length - 1; i >= 0; i++) {
+        for (let i = this.variables.length - 1; i >= 0; i--) {
             let frame = this.variables[i]
             if (frame[name]) {
                 return frame[name]
             }
         }
     }
-
 }
 
 export type VariableFrame = {[id: string]: Variable}

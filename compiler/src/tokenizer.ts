@@ -105,7 +105,7 @@ export class Token {
     }
 
     static dummy(value: string) {
-        let t = new Tokenizer(value)
+        let t = new BaseTokenizer(value)
         return t.next()
     }
 }
@@ -147,7 +147,16 @@ const multiCharOperators = ['++','--','&&','||','**','//','<=','>=','==','!=','.
 
 const keywords = ['main','function','if','var','const','as','is','in','while','for','switch','return','constructor','private','protected','abstract','native','final','static','readonly','operator','iterator','get','set','indexer','accessor','assigner','invoker','true','false','null','void']
 
-export class Tokenizer {
+export abstract class Tokenizer {
+
+    abstract next(): Token
+
+    abstract canRead(): boolean
+
+
+}
+
+export class BaseTokenizer extends Tokenizer {
 
     pos: number = 0;
     line: number = 0;
@@ -155,7 +164,7 @@ export class Tokenizer {
     currentStringSegment?: ExpressionSegment
 
     constructor(private input: string) {
-
+        super()
     }
 
     next(): Token {
@@ -312,6 +321,24 @@ export class Tokenizer {
         this.column -= (op.length - lastValid.length)
         this.pos -= (op.length - lastValid.length)
         return new Token(TokenType.symbol, lastValid, {start, end: this.getPos()})
+    }
+}
+
+export class DelegateTokenizer extends Tokenizer {
+
+    pos: number = 0
+    constructor(public tokens: Token[]) {
+        super()
+    }
+
+    next(): Token {
+        if (this.pos >= this.tokens.length) {
+            return Token.EOF
+        }
+        return this.tokens[this.pos]
+    }
+    canRead(): boolean {
+        return this.pos < this.tokens.length
     }
 
 }

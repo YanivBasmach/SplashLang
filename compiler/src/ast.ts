@@ -1,10 +1,10 @@
-import { TextRange, Token, TokenType } from "./tokenizer";
+import { ExpressionSegment, StringToken, TextRange, Token, TokenType } from "./tokenizer";
 import { Parser } from "./parser";
-import { DummySplashType, Parameter, SplashClass, SplashComboType, SplashType, TypeToken } from "./oop";
+import { Parameter, TypeToken } from "./oop";
 import { Processor } from "./processor";
-import { GenArrayCreation, GenAssignableExpression, GenAssignment, GenCall, GenCallAccess, GenClassDecl, Generated, GeneratedBinary, GeneratedBlock, GeneratedExpression, GeneratedLiteral, GeneratedReturn, GeneratedStatement, GeneratedUnary, GenFieldAccess, GenFunction, GenVarAccess, GenVarDeclaration, SplashScript } from "./generator";
+import { GenArrayCreation, GenAssignableExpression, GenAssignment, GenCall, GenCallAccess, GenClassDecl, Generated, GeneratedBinary, GeneratedBlock, GeneratedExpression, GeneratedLiteral, GeneratedReturn, GeneratedStatement, GeneratedUnary, GenFieldAccess, GenFunction, GenStringLiteral, GenVarAccess, GenVarDeclaration, SplashScript } from "./generator";
 import { AssignmentOperator, BinaryOperator, UnaryOperator } from "./operators";
-import { SplashArray, SplashFunctionType, SplashInt, SplashString } from "./primitives";
+import { DummySplashType, SplashArray, SplashClass, SplashComboType, SplashFunctionType, SplashInt, SplashString, SplashType } from "./types";
 
 
 export abstract class ASTNode {
@@ -33,13 +33,15 @@ export class RootNode extends ASTNode {
         }
     }
 
-    generate(proc: Processor): Generated {
-        let script = new SplashScript()
+    generate(proc: Processor): SplashScript {
+        let script = new SplashScript(proc.file)
         for (let s of this.statements) {
             if (s instanceof VarDeclaration) {
                 script.vars.push(s.generate(proc))
             } else if (s instanceof SimpleFunction) {
                 script.functions.push(s.generate(proc))
+            } else if (s instanceof MainBlock) {
+                script.main = s.generate(proc)
             }
         }
         return script
@@ -215,6 +217,23 @@ export class LiteralExpression extends Expression {
     }
     generate(proc: Processor): GeneratedExpression {
         return new GeneratedLiteral(this.token.type, this.token.value)
+    }
+}
+
+export class StringExpression extends Expression {
+    
+    constructor(public range: TextRange, public nodes: Expression[]) {
+        super('string_literal',range)
+    }
+
+    getResultType(proc: Processor): SplashType {
+        for (let s of this.nodes) {
+            s.getResultType(proc)
+        }
+        return SplashString.instance
+    }
+    generate(proc: Processor): GeneratedExpression {
+        return new GenStringLiteral(this.nodes.map(n=>n.generate(proc)))
     }
 }
 

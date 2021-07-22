@@ -3,18 +3,5 @@ main {
     var x = 5
     var str = "Hello World {x}!"
 
-    x += 2
-
     print(str)
-}
-
-function print(object msg...) {
-    Process.stdout.write(msg.mapToString().join(' '))
-}
-
-function string readString(string? msg) {
-    if (msg) {
-        print(msg)
-    }
-    return Process.stdin.readLine()
 }

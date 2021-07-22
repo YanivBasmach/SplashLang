@@ -3,7 +3,7 @@ import { GeneratedBlock, GeneratedExpression, SplashScript } from "./generator";
 import { BinaryOperator, UnaryOperator } from "./operators";
 import { Runtime } from "./runtime";
 import { TextRange, Token } from "./tokenizer";
-import { SplashFunctionType, SplashString } from "./primitives";
+import { DummySplashType, SplashClass, SplashFunctionType, SplashPrimitive, SplashString, SplashType } from "./types";
 import { NativeFunctions } from "./native";
 
 export abstract class SingleTypeToken {
@@ -43,131 +43,8 @@ export class TypeToken {
         return true
     }
 
-}
-
-
-export abstract class SplashType {
-
-    constructor(public name: string) {
-
-    }
-
-    get methods(): Method[] {
-        return this.members.filter(m=>m instanceof Method).map(m=>m as Method)
-    }
-
-    get defaultValue(): Value {
-        return Value.null
-    }
-
-    abstract get members(): Member[]
-
-    getBinaryOperation(op: BinaryOperator, right: SplashType): Method | undefined {
-        let name = Object.entries(BinaryOperator).find(e=>e[1] == op)?.[0] || ''
-        let methods = this.getMethods(name)
-        for (let m of methods) {
-            if (m.modifiers.has('operator') && m.params[0] && m.params[0].type == right) {
-                return m
-            }
-        }
-    }
-
-    getUnaryOperation(op: UnaryOperator): Method | undefined {
-        let name = Object.entries(UnaryOperator).find(e=>e[1] == op)?.[0] || ''
-        let methods = this.getMethods(name)
-        for (let m of methods) {
-            if (m.modifiers.has('operator')) {
-                return m
-            }
-        }
-    }
-
-    getMethods(name: string) {
-        return this.methods.filter(m=>m.name == name)
-    }
-
-    getMembers(name: string) {
-        return this.members.filter(m=>m.name == name)
-    }
-
-    getInvoker(params: ExpressionList): Method | undefined {
-        let methods = this.getMethods('invoker')
-        for (let m of methods) {
-            if (m.modifiers.has('invoker') && params.canApplyTo(m.params)) {
-                return m
-            }
-        }
-    }
-
-    getValidMethod(name: string, ...params: Value[]) {
-        return this.getMethods(name)
-            .filter(m=>Parameter.allParamsMatch(m.params,params))[0]
-    }
-
-    canAssignTo(type: SplashType) {
-        return this == type
-    }
-
-}
-
-export class DummySplashType extends SplashType {
-    static void = new DummySplashType('void')
-    static null = new DummySplashType('null')
-
-    constructor(name: string) {
-        super(name)
-    }
-    get members(): Member[] {
-        return []
-    }
-    
-}
-
-export class SplashClass extends SplashType {
-    static object = new SplashClass('object')
-
-    private _members: Member[] = []
-
-    staticFields: {[name: string]: Value} = {}
-
-    constructor(name: string) {
-        super(name)
-    }
-
-    get members() {
-        return this._members
-    }
-}
-
-export class SplashParameterizedType extends SplashType {
-    
-
-    constructor(public base: SplashType, public params: SplashType[]) {
-        super(base.name)
-    }
-
-    get members(): Member[] {
-        return this.base.members
-    }
-
-    canAssignTo(type: SplashType) {
-        return this.base.canAssignTo(type)
-    }
-    
-}
-
-export class SplashComboType extends SplashType {
-
-    constructor(public types: SplashType[]) {
-        super('union')
-    }
-
-    get members(): Member[] {
-        return this.types.map(t=>t.members).reduce((prev,curr)=>prev.concat(curr),[])
-    }
-
-    canAssignTo(type: SplashType) {
-        return this.types.find(t=>t.canAssignTo(type)) !== undefined
+    static dummy(name: string) {
+        return new TypeToken([new BasicTypeToken(TextRange.end,Token.dummy(name),[],false)])
     }
 
 }
@@ -357,7 +234,9 @@ export class Value {
     }
 
     toString(runtime: Runtime) {
+        if (this.type instanceof SplashPrimitive) {
+            return this.inner.toString()
+        }
         return this.invokeMethod(runtime, 'toString')
     }
 }
-

@@ -1,5 +1,7 @@
 import { SplashScript } from "./generator";
-import { Field, Parameter, SplashClass, Value } from "./oop";
+import { nativeFunctionRegistry } from "./native";
+import { Field, Parameter, Value } from "./oop";
+import { SplashClass } from "./types";
 
 
 export class Runtime {
@@ -31,7 +33,12 @@ export class Runtime {
         for (let f of this.script.functions) {
             if (f.name == name && Parameter.allParamsMatch(f.params, params)) {
                 return f.invoke(new Runtime(this.script), ...params)
-            } 
+            }
+        }
+        for (let nf of nativeFunctionRegistry) {
+            if (nf.name == name) {
+                return nf.func(new Runtime(this.script), ...params)
+            }
         }
         return Value.null
     }
