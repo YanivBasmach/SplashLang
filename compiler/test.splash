@@ -1,7 +1,14 @@
 
 main {
     var x = 5
-    var str = "Hello World {x}!"
+    var name = "Yaniv"
 
-    print(str)
+    sayHi(name)
+
+    print(name)
+}
+
+
+function sayHi(string name) {
+    print("Hi, {name}!")
 }

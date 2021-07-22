@@ -54,24 +54,26 @@ export interface Member {
     type: SplashType
 }
 
-export abstract class ClassExecutable {
+export abstract class ClassExecutable implements Member {
 
     constructor(public cls: SplashClass, public params: Parameter[], public modifiers: ModifierList) {
 
     }
+    abstract name: string;
+    abstract type: SplashType;
 
     abstract invoke(runtime: Runtime, thisArg?: Value, ...params: Value[]): Value
 
 }
 
-export class Method extends ClassExecutable implements Member {
+export class Method extends ClassExecutable {
     
-
+    body?: GeneratedBlock
     type: SplashType
 
-    constructor(cls: SplashClass, public name: string, public retType: SplashType, params: Parameter[], modifiers: ModifierList, public body?: GeneratedBlock) {
+    constructor(cls: SplashClass, public name: string, public retType: SplashType, params: Parameter[], modifiers: ModifierList) {
         super(cls,params,modifiers)
-        this.type = new SplashFunctionType(this.params.map(p=>p.type),this.retType)
+        this.type = new SplashFunctionType(this.params,this.retType)
     }
 
     invoke(runtime: Runtime, thisArg?: Value, ...params: Value[]): Value {
@@ -130,14 +132,33 @@ export class Parameter {
     }
 
     static allParamsMatch(params: Parameter[], values: Value[]) {
+        for (let i = 0; i < values.length; i++) {
+            let v = values[i]
+            let p = Parameter.getParamAt(i,params)
+            if (p) {
+                if (!v.type.canAssignTo(p.type)) return false
+            } else {
+                return false
+            }
+        }
+        return true
+    }
+}
 
+export class CtorParameter extends Parameter {
+    constructor(name: string, type: SplashType, public assignToField: boolean, defValue?: GeneratedExpression, public vararg?: boolean) {
+        super(name,type,defValue,vararg)
     }
 }
 
 export class Constructor extends ClassExecutable {
 
-    constructor(cls: SplashClass, params: Parameter[], modifiers: ModifierList, public body: GeneratedBlock) {
+    body?: GeneratedBlock
+    type: SplashType
+    name: string = 'constructor'
+    constructor(cls: SplashClass, params: CtorParameter[], modifiers: ModifierList) {
         super(cls,params,modifiers)
+        this.type = new SplashFunctionType(this.params,this.cls)
     }
 
     invoke(runtime: Runtime, thisArg?: Value, ...params: Value[]): Value {
@@ -151,7 +172,14 @@ export class Constructor extends ClassExecutable {
         }
         
         Parameter.initParams(newRt, this.params, params)
-        this.body.run(newRt)
+        for (let i = 0; i < params.length; i++) {
+            let v = params[i]
+            let cp = Parameter.getParamAt(i,this.params)
+            if (cp instanceof CtorParameter && cp.assignToField) {
+                val.set(newRt,cp.name,v)
+            }
+        }
+        this.body?.run(newRt)
         return val
     }
 
@@ -237,6 +265,13 @@ export class Value {
         if (this.type instanceof SplashPrimitive) {
             return this.inner.toString()
         }
-        return this.invokeMethod(runtime, 'toString')
+        return this.invokeMethod(runtime, 'toString').inner
+    }
+
+    toBoolean(runtime: Runtime): boolean {
+        if (this.type instanceof SplashPrimitive) {
+            return this.inner ? true : false
+        }
+        return this.invokeMethod(runtime, 'toBoolean').inner
     }
 }

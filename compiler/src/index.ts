@@ -13,23 +13,31 @@ let tokenizer = new BaseTokenizer(input)
 
 let parser = new Parser(file, tokenizer)
 
-console.time('compilation')
-
+console.log('compiling...')
+console.time('compilation done')
 let root = parser.parseFile()
 //console.log(JSON.stringify(root,undefined,2))
-console.timeEnd('compilation')
+console.timeEnd('compilation done')
 
-console.time('process')
-let proc = new Processor(root,path.basename(file))
-proc.root.index(proc)
+if (!parser.hasErrors) {
+    console.log('processing...')
+    console.time('processing done')
+    let proc = new Processor(root,path.basename(file))
+    proc.root.index(proc)
 
-proc.process()
-console.timeEnd('process')
+    proc.process()
+    console.timeEnd('processing done')
 
-console.time('generation')
-let generated = proc.root.generate(proc)
-console.timeEnd('generation')
+    if (!proc.hasErrors) {
+        console.log('generating...')
+        console.time('generation done')
+        let generated = proc.root.generate(proc)
+        console.timeEnd('generation done')
 
-console.time('execution')
-generated.run(new Runtime(generated))
-console.timeEnd('execution')
+        console.log('executing...')
+        console.time('execution done')
+        generated.run(new Runtime(generated))
+        console.timeEnd('execution done')
+
+    }
+}

@@ -7,6 +7,7 @@ export class Parser {
 
     lookforward: Token[] = []
     lastToken: Token
+    hasErrors = false
 
     constructor(public file: string, public tokenizer: Tokenizer) {
         this.lastToken = Token.EOF;
@@ -17,7 +18,8 @@ export class Parser {
     }
 
     errorRange(range: TextRange, msg: string) {
-        console.log('Compilation error at ' + TextRange.toString(range) + ': ' + msg)
+        console.trace('Compilation error at ' + TextRange.toString(range) + ': ' + msg)
+        this.hasErrors = true
     }
 
     next(skipComments = true): Token {
@@ -46,7 +48,7 @@ export class Parser {
             }
             this.lookforward.push(n)
         }
-        return this.lookforward[0] || Token.EOF
+        return this.lookforward[count] || Token.EOF
     }
 
     goBack() {
@@ -255,7 +257,7 @@ export class Parser {
                 retType = this.parseTypeToken(true) || TypeToken.void
             }
             let name = this.expect(TokenType.identifier)
-            if (name && this.expectValue('(')) {
+            if (name && this.isValueNext('(')) {
                 let params = this.parseParameterList()
                 let code = this.parseBlock()
                 return new SimpleFunction(label.range, modifiers, name, retType, params, code)

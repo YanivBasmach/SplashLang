@@ -1,7 +1,7 @@
 import { ClassDeclaration, MethodNode, ModifierList, ParameterNode, RootNode, SimpleFunction } from "./ast";
-import { GenFunction } from "./generator";
+import { GenFunction, SplashScript } from "./generator";
 import { BasicTypeToken, FunctionTypeToken, Method, SingleTypeToken, TypeToken } from "./oop";
-import { DummySplashType, SplashClass, SplashComboType, SplashFunctionType, SplashType } from "./types";
+import { DummySplashType, SplashArray, SplashClass, SplashComboType, SplashFunctionType, SplashInt, SplashString, SplashType } from "./types";
 import { TextRange, Token } from "./tokenizer";
 import { nativeFunctionRegistry, NativeFunctions } from "./native";
 
@@ -14,6 +14,7 @@ export class Processor {
     currentClass: SplashClass | undefined
     currentFunction: GenFunction | Method | undefined
     hasReturn = false
+    hasErrors = false
 
     constructor(public root: RootNode, public file: string) {
         for (let f of nativeFunctionRegistry) { // todo: remove this and replace with reading of SDK
@@ -21,6 +22,12 @@ export class Processor {
                 return new ParameterNode(Token.EOF,TypeToken.dummy(p))
             })))
         }
+        this.types.push(SplashString.instance)
+        this.types.push(SplashInt.instance)
+        this.types.push(DummySplashType.void)
+        this.types.push(DummySplashType.null)
+        this.types.push(SplashClass.object)
+        this.types.push(SplashArray.instance)
     }
 
     process() {
@@ -29,6 +36,7 @@ export class Processor {
 
     error(range: TextRange, msg: string) {
         console.log("Validation error at " + TextRange.toString(range) + ": " + msg)
+        this.hasErrors = true
     }
 
     push() {
@@ -57,7 +65,7 @@ export class Processor {
         if (token instanceof BasicTypeToken) {
             return this.types.find(t=>t.name == token.base.value) || DummySplashType.null
         } else if (token instanceof FunctionTypeToken) {
-            return new SplashFunctionType(token.params.map(p=>this.resolveType(p.type)),this.resolveType(token.returnType))
+            return new SplashFunctionType(token.params.map(p=>p.generate(this)),this.resolveType(token.returnType))
         }
         return DummySplashType.null
     }

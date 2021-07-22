@@ -46,6 +46,7 @@ export class SplashScript extends Generated {
 
     functions: GenFunction[] = []
     vars: GenVarDeclaration[] = []
+    classes: GenClassDecl[] = []
     main?: GeneratedBlock
 
     constructor(public name: string) {
@@ -100,6 +101,21 @@ export class GenFunction extends GeneratedStatement {
         }
     }
 
+}
+
+export class GenIfStatement extends GeneratedStatement {
+    constructor(public expr: GeneratedExpression, public then: GeneratedStatement, public orElse?: GeneratedStatement) {
+        super()
+    }
+    run(runtime: Runtime): void {
+        let res = this.expr.evaluate(runtime)
+        if (res.toBoolean(runtime)) {
+            this.then.run(runtime)
+        } else {
+            this.orElse?.run(runtime)
+        }
+    }
+    
 }
 
 export abstract class GeneratedExpression extends Generated {
@@ -309,7 +325,7 @@ export class GeneratedReturn extends GeneratedStatement {
 }
 
 export class GenClassDecl extends GeneratedStatement {
-    constructor(public cls: SplashClass, public body: GeneratedBlock) {
+    constructor(public cls: SplashClass) {
         super()
     }
 

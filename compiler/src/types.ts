@@ -1,7 +1,7 @@
 
 
-import { ExpressionList, ParameterNode } from "./ast"
-import { BasicTypeToken, FunctionTypeToken, Member, Method, Parameter, TypeToken, Value } from "./oop"
+import { ExpressionList, ModifierList, ParameterNode } from "./ast"
+import { BasicTypeToken, Constructor, Field, FunctionTypeToken, Member, Method, Parameter, TypeToken, Value } from "./oop"
 import { BinaryOperator, UnaryOperator } from "./operators"
 import { Runtime } from "./runtime"
 import { TextRange, Token } from "./tokenizer"
@@ -82,6 +82,10 @@ export abstract class SplashType {
         return this.members.filter(m=>m.name == name)
     }
 
+    getField(name: string) {
+        return this.members.find(m=>m instanceof Field && m.name == name)
+    }
+
     getInvoker(params: ExpressionList): Method | undefined {
         let methods = this.getMethods('invoker')
         for (let m of methods) {
@@ -104,7 +108,7 @@ export abstract class SplashType {
 
 export class SplashFunctionType extends SplashType {
 
-    constructor(public paramTypes: SplashType[], public retType: SplashType) {
+    constructor(public params: Parameter[], public retType: SplashType) {
         super('function')
     }
 
@@ -113,7 +117,7 @@ export class SplashFunctionType extends SplashType {
     }
 
     toToken() {
-        return new TypeToken([new FunctionTypeToken(TextRange.end, this.paramTypes.map(t=>new ParameterNode(Token.EOF,t.toToken())),this.retType.toToken(),false)])
+        return new TypeToken([new FunctionTypeToken(TextRange.end, this.params.map(p=>new ParameterNode(Token.dummy(p.name),p.type.toToken())),this.retType.toToken(),false)])
     }
     
 }
@@ -192,6 +196,7 @@ export class SplashClass extends SplashType {
     private _members: Member[] = []
 
     staticFields: {[name: string]: Value} = {}
+    constructors: Constructor[] = []
 
     constructor(name: string) {
         super(name)
@@ -216,6 +221,10 @@ export class SplashParameterizedType extends SplashType {
     canAssignTo(type: SplashType) {
         return this.base.canAssignTo(type)
     }
+
+    getInvoker(params: ExpressionList) {
+        return this.base.getInvoker(params)
+    }
     
 }
 
@@ -233,4 +242,17 @@ export class SplashComboType extends SplashType {
         return this.types.find(t=>t.canAssignTo(type)) !== undefined
     }
 
+}
+
+export class SplashClassType extends SplashClass {
+
+    private static instance = new SplashClassType()
+
+    constructor() {
+        super('Class')
+    }
+
+    static of(type: SplashType) {
+        return new SplashParameterizedType(SplashClassType.instance,[type])
+    }
 }

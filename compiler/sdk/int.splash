@@ -1,25 +1,13 @@
 
 class int {
 
-    native operator boolean equals(int other)
-
     native operator int plus(int | double other)
 
     native operator int minus(int other)
 
-    get boolean isPrime() {
+    boolean isPrime() {
 
     }
-
-    get int digits() {
-
-    }
-
-    get int bits() {
-
-    }
-
-    native string toString()
 
     
 
