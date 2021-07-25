@@ -145,7 +145,7 @@ const symbols = ['~','`',';','!','@','#','$','%','^','&','*','(',')','-','+','='
 
 const multiCharOperators = ['++','--','&&','||','**','//','<=','>=','==','!=','..','...','+=','-=','*=','/=','%=','**=','//='];
 
-const keywords = ['main','function','if','var','const','as','is','in','while','for','switch','return','constructor','private','protected','abstract','native','final','static','readonly','operator','iterator','get','set','indexer','accessor','assigner','invoker','true','false','null','void']
+const keywords = ['main','function','if','var','const','as','is','in','while','for','switch','class','return','constructor','private','protected','abstract','native','final','static','readonly','operator','iterator','get','set','indexer','accessor','assigner','invoker','true','false','null','void']
 
 export abstract class Tokenizer {
 
@@ -335,7 +335,7 @@ export class DelegateTokenizer extends Tokenizer {
         if (this.pos >= this.tokens.length) {
             return Token.EOF
         }
-        return this.tokens[this.pos]
+        return this.tokens[this.pos++]
     }
     canRead(): boolean {
         return this.pos < this.tokens.length

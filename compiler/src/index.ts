@@ -36,8 +36,9 @@ if (!parser.hasErrors) {
 
         console.log('executing...')
         console.time('execution done')
-        generated.run(new Runtime(generated))
+        let rt = new Runtime(generated)
+        rt.types.push(...proc.types)
+        generated.run(rt)
         console.timeEnd('execution done')
-
     }
 }

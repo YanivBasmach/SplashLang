@@ -85,7 +85,7 @@ export class GenFunction extends GeneratedStatement {
     }
 
     invoke(runtime: Runtime, ...params: Value[]): Value {
-        let r = new Runtime(runtime.script)
+        let r = runtime.copy()
         if (this.body) {
             for (let i = 0; i < params.length; i++) {
                 let pv = params[i]
@@ -215,7 +215,7 @@ export class GenVarAccess extends GenAssignableExpression {
         return
     }
     evalSelf(runtime: Runtime, parent?: Value): Value {
-        return runtime.getVariable(this.name)
+        return runtime.getVariable(this.name) || Value.null
     }
 }
 

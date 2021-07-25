@@ -1,4 +1,4 @@
-import { ExpressionList, ModifierList, ParameterNode } from "./ast";
+import { ExpressionList, Modifier, ModifierList, ParameterNode } from "./ast";
 import { GeneratedBlock, GeneratedExpression, SplashScript } from "./generator";
 import { BinaryOperator, UnaryOperator } from "./operators";
 import { Runtime } from "./runtime";
@@ -10,17 +10,27 @@ export abstract class SingleTypeToken {
     constructor(public range: TextRange, public optional: boolean) {
 
     }
+
+    abstract toString(): string
 }
 
 export class BasicTypeToken extends SingleTypeToken {
     constructor(public range: TextRange, public base: Token, public typeParams: TypeToken[], optional: boolean) {
         super(range, optional)
     }
+
+    toString() {
+        return this.base.value + (this.typeParams.length == 0 ? '' : '<' + this.typeParams.join(',') + '>') + (this.optional ? '?' : '')
+    }
 }
 
 export class FunctionTypeToken extends SingleTypeToken {
     constructor(public range: TextRange, public params: ParameterNode[], public returnType: TypeToken, optional: boolean) {
         super(range, optional)
+    }
+
+    toString() {
+        return '(' + this.params.map(p=>p.type.toString() + ' ' + p.name).join(', ') + ')=>' + this.returnType.toString()
     }
 }
 
@@ -45,6 +55,10 @@ export class TypeToken {
 
     static dummy(name: string) {
         return new TypeToken([new BasicTypeToken(TextRange.end,Token.dummy(name),[],false)])
+    }
+
+    toString() {
+        return this.options.join(' | ')
     }
 
 }
@@ -78,7 +92,7 @@ export class Method extends ClassExecutable {
 
     invoke(runtime: Runtime, thisArg?: Value, ...params: Value[]): Value {
         let r: Runtime
-        if (this.modifiers.has('static')) {
+        if (this.modifiers.has(Modifier.static)) {
             r = runtime.inClassStatic(this.cls)
         } else if (thisArg) {
             r = runtime.inClassInstance(thisArg)
@@ -109,6 +123,7 @@ export class Parameter {
     }
 
     static getParamAt(index: number, params: Parameter[]) {
+        if (params.length == 0) return
         if (index < params.length) {
             return params[index]
         }
@@ -212,23 +227,20 @@ export class Value {
     }
 
     invoke(runtime: Runtime, ...params: Value[]) {
-        let invoker = this.type.getMethods('invoker')
-            .filter(m=>m.modifiers.has('invoker'))
+        let invoker = this.type.methods.filter(m=>m.modifiers.has(Modifier.invoker))
             .filter(m=>Parameter.allParamsMatch(m.params, params))
         
         return invoker[0].invoke(runtime,this,...params)
     }
 
     getAccessor() {
-        return this.type.getMethods('accessor')
-            .filter(m=>m.modifiers.has('accessor'))
+        return this.type.methods.filter(m=>m.modifiers.has(Modifier.accessor))
             .filter(m=>m.params.length == 1 && m.params[0].type == SplashString.instance)
             [0]
     }
 
     getAssigner(type: SplashType) {
-        return this.type.getMethods('assigner')
-            .filter(m=>m.modifiers.has('assigner'))
+        return this.type.methods.filter(m=>m.modifiers.has(Modifier.assigner))
             .filter(m=>m.params.length == 2 
                 && m.params[0].type == SplashString.instance
                 && type.canAssignTo(m.params[1].type))
@@ -265,6 +277,7 @@ export class Value {
         if (this.type instanceof SplashPrimitive) {
             return this.inner.toString()
         }
+        console.log('invoking toString of',this.type,':',this.inner)
         return this.invokeMethod(runtime, 'toString').inner
     }
 

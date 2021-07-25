@@ -1,10 +1,10 @@
 import { ExpressionSegment, StringToken, TextRange, Token, TokenType } from "./tokenizer";
 import { Parser } from "./parser";
-import { Constructor, CtorParameter, Member, Method, Parameter, TypeToken } from "./oop";
+import { Constructor, CtorParameter, Field, Member, Method, Parameter, TypeToken } from "./oop";
 import { Processor } from "./processor";
 import { GenArrayCreation, GenAssignableExpression, GenAssignment, GenCall, GenCallAccess, GenClassDecl, Generated, GeneratedBinary, GeneratedBlock, GeneratedExpression, GeneratedLiteral, GeneratedReturn, GeneratedStatement, GeneratedUnary, GenFieldAccess, GenFunction, GenIfStatement, GenStringLiteral, GenVarAccess, GenVarDeclaration, SplashScript } from "./generator";
 import { AssignmentOperator, BinaryOperator, UnaryOperator } from "./operators";
-import { DummySplashType, SplashArray, SplashClass, SplashClassType, SplashComboType, SplashFunctionType, SplashInt, SplashString, SplashType } from "./types";
+import { DummySplashType, SplashArray, SplashClass, SplashClassType, SplashComboType, SplashFunctionType, SplashInt, SplashParameterizedType, SplashString, SplashType } from "./types";
 
 
 export abstract class ASTNode {
@@ -23,6 +23,7 @@ export class RootNode extends ASTNode {
     
     index(proc: Processor) {
         for (let s of this.statements) {
+            console.log('indexing ' + s.constructor.name)
             s.index(proc)
         }
     }
@@ -154,8 +155,17 @@ export class ExpressionList {
 
     }
 
-    canApplyTo(parameters: Parameter[]) {
-        
+    canApplyTo(proc: Processor, parameters: Parameter[]) {
+        for (let i = 0; i < this.values.length; i++) {
+            let v = this.values[i]
+            let p = Parameter.getParamAt(i,parameters)
+            let type = v.getResultType(proc)
+            if (!p || !type.canAssignTo(p.type)) {
+                return false;
+            }
+        }
+        // todo: ensure there are no required parameters without a value assigned
+        return true;
     }
 
     generate(proc: Processor) {
@@ -328,10 +338,13 @@ export class FieldAccess extends AssignableExpression {
     getResultType(proc: Processor): SplashType {
         let parentType = this.parent.getResultType(proc)
         let m = parentType.getMembers(this.field.value)
+        if (m.length == 1) {
+            return m[0].type
+        }
         if (m.length > 0) {
             return new SplashComboType(m.map(f=>f.type))
         }
-        proc.error(this.field.range, "Unknown member in type " + parentType)
+        proc.error(this.field.range, "Unknown member " + this.field.value + " in type " + parentType)
         return SplashClass.object
     }
     generate(proc: Processor): GenAssignableExpression {
@@ -347,17 +360,20 @@ export class VariableAccess extends AssignableExpression {
 
     getResultType(proc: Processor): SplashType {
         let v = proc.getVariable(this.name.value);
+        let func = proc.functions.find(f=>f.name.value == this.name.value)
         if (v) {
-            return v.type
-        } else {
-            let func = proc.functions.find(f=>f.name.value == this.name.value)
-            if (func) return func.toFunctionType(proc)
-            else {
-                let cls = proc.types.find(t=>t.name == this.name.value)
-                if (cls) return SplashClassType.of(cls)
+            if (func) {
+                return new SplashComboType([v.type,func.toFunctionType(proc)])
             }
+            return v.type
+        } else if (func) {
+            return func.toFunctionType(proc)
+        } else {
+            let cls = proc.types.find(t=>t.name == this.name.value)
+            if (cls) return SplashClassType.of(cls)
         }
-        proc.error(this.name.range,"Unknown variable")
+        console.log('variable ' + this.name.value + ' not found in',proc.variables)
+        proc.error(this.name.range,"Unknown variable '" + this.name.value + "'")
         return SplashClass.object
     }
     generate(proc: Processor): GenAssignableExpression {
@@ -373,10 +389,28 @@ export class CallAccess extends Expression {
 
     getResultType(proc: Processor): SplashType {
         let res = this.parent.getResultType(proc)
-        let invoker = res.getInvoker(this.params);
+        if (res instanceof SplashFunctionType) {
+            if (!this.params.canApplyTo(proc,res.params)) {
+                proc.error(this.range,"Mismatched parameter types") // todo: improve this error message
+            }
+            return res.retType
+        } else if (res instanceof SplashComboType && res.types[1] instanceof SplashFunctionType) {
+            if (!this.params.canApplyTo(proc,res.types[1].params)) {
+                proc.error(this.range,"Mismatched parameter types") // todo: improve this error message
+            }
+            return res.types[1].retType
+        }
+        if (res instanceof SplashParameterizedType && res.base instanceof SplashClassType) {
+            if (!(res.params[0] as SplashClass).constructors.find(c=>this.params.canApplyTo(proc,c.params))) {
+                proc.error(this.range,"No constructor of " + res.params[0] + " found taking these parameters")
+            }
+            return res.params[0]
+        }
+        let invoker = res.getInvoker(proc,this.params);
         if (invoker) {
             return invoker.retType
         }
+        proc.error(this.range,'Cannot invoke variable of type ' + res)
         return SplashClass.object
     }
     generate(proc: Processor): GenCallAccess {
@@ -399,7 +433,23 @@ export class CallStatement extends Statement {
     }
 }
 
-export type Modifier = 'private'|'protected'|'abstract'|'native'|'final'|'static'|'readonly'|'operator'|'iterator'|'get'|'set'|'indexer'|'accessor'|'assigner'|'invoker'
+export enum Modifier {
+    private,
+    protected,
+    abstract,
+    native,
+    final,
+    static,
+    readonly,
+    operator,
+    iterator,
+    get,
+    set,
+    indexer,
+    accessor,
+    assigner,
+    invoker
+}
 
 export class ModifierList extends ASTNode {
 
@@ -411,13 +461,13 @@ export class ModifierList extends ASTNode {
 
     has(mod: Modifier) {
         for (let t of this.modifiers) {
-            if (t.value == mod) return true
+            if (Modifier[mod] == t.value) return true
         }
         return false
     }
 
     add(parser: Parser, mod: Token) {
-        if (this.has(mod.value as Modifier)) {
+        if (this.has(Modifier[mod.value as keyof typeof Modifier])) {
             parser.error(mod, "Duplicate modifier '" + mod.value + "'")
         } else {
             this.modifiers.push(mod)
@@ -432,14 +482,30 @@ export class ModifierList extends ASTNode {
     
     assertHasOnly(parser: Parser, ...mods: Modifier[]) {
         for (let m of this.modifiers) {
-            if (!mods.includes(m.value as Modifier)) {
+            if (!mods.includes(Modifier[m.value as keyof typeof Modifier])) {
                 parser.error(m, "This modifier is invalid here")
             }
         }
     }
 
-    rangeOf(modifier: Modifier) {
-        return this.modifiers.find(m=>m.value == modifier)?.range || TextRange.end
+    get(modifier: Modifier): Token {
+        return this.modifiers.find(m=>m.value == Modifier[modifier]) || Token.EOF
+    }
+
+    checkIncompatible(parser: Parser, ...mods: Modifier[]) {
+        let found: Token[] = []
+        for (let m of mods) {
+            let t = this.get(m)
+            if (t.isValid()) {
+                found.push(t)
+            }
+        }
+        if (found.length > 1) {
+            for (let m of found) {
+                let others = found.filter(t=>t != m).map(t=>t.value).join(", ")
+                parser.error(m,`Modifier ${m.value} is incompatible with ${others}`)
+            }
+        }
     }
 }
 
@@ -478,7 +544,7 @@ export class SimpleFunction extends Statement {
     }
 
     process(proc: Processor) {
-        if (this.modifiers.has('native')) {
+        if (this.modifiers.has(Modifier.native)) {
             if (this.code) {
                 proc.error(this.code.label, "Native functions may not have a body")
             }
@@ -500,7 +566,6 @@ export class SimpleFunction extends Statement {
             if (hasVararg) {
                 proc.error(p.name.range, "Vararg parameter must be the last parameter")
             }
-            
         }
 
         if (this.code) {
@@ -563,57 +628,67 @@ export class MethodNode extends ClassMember {
     index(proc: Processor) {
         if (proc.currentClass) {
             this.method = new Method(proc.currentClass, this.name.value, proc.resolveType(this.retType),this.params.map(p=>p.generate(proc)),this.modifiers)
-            proc.currentClass.methods.push(this.method)
+            proc.currentClass.addMember(this.method)
         }
     }
 
     process(proc: Processor): void {
-        if (this.modifiers.has('native')) {
+        if (this.modifiers.has(Modifier.native)) {
             if (this.body) {
                 proc.error(this.body.label, "Native methods may not have a body")
             }
         } else if (!this.body) {
             proc.error(this.name.range, "Missing method body")
         }
-        if (this.modifiers.has('abstract') && this.body) {
+        if (this.modifiers.has(Modifier.abstract) && this.body) {
             proc.error(this.body.label, "Abstract methods may not have a body")
         }
-        if (this.modifiers.has('accessor')) {
+        if (this.modifiers.has(Modifier.accessor)) {
             if (this.params.length != 1 || proc.resolveType(this.params[0].type) != SplashString.instance) {
-                proc.error(this.modifiers.rangeOf('accessor'), "Accessor methods should only take 1 string parameter")
+                proc.error(this.modifiers.get(Modifier.accessor).range, "Accessor methods should only take 1 string parameter")
             }
-        } else if (this.modifiers.has('assigner')) {
+        } else if (this.modifiers.has(Modifier.assigner)) {
             if (this.params.length != 2 || proc.resolveType(this.params[0].type) != SplashString.instance) {
-                proc.error(this.modifiers.rangeOf('assigner'), "Assigner methods should take 2 parameters, the first one being string")
+                proc.error(this.modifiers.get(Modifier.assigner).range, "Assigner methods should take 2 parameters, the first one being string")
             }
-        } else if (this.modifiers.has('indexer')) {
-            if (this.modifiers.has('get')) {
+        } else if (this.modifiers.has(Modifier.indexer)) {
+            if (this.modifiers.has(Modifier.get)) {
                 if (this.params.length != 1) {
-                    proc.error(this.modifiers.rangeOf('indexer'), "Getter Indexer methods should only take 1 parameter")
+                    proc.error(this.modifiers.get(Modifier.indexer).range, "Getter Indexer methods should only take 1 parameter")
                 }
-            } else if (this.modifiers.has('set')) {
+            } else if (this.modifiers.has(Modifier.set)) {
                 if (this.params.length != 2) {
-                    proc.error(this.modifiers.rangeOf('indexer'), "Setter Indexer methods should take 2 parameters")
+                    proc.error(this.modifiers.get(Modifier.indexer).range, "Setter Indexer methods should take 2 parameters")
                 }
             }
-        } else if (this.modifiers.has('iterator')) {
+        } else if (this.modifiers.has(Modifier.iterator)) {
             if (this.params.length > 0) { // todo: validate return type is array
-                proc.error(this.modifiers.rangeOf('iterator'), "Iterator methods should not take any parameters")
+                proc.error(this.modifiers.get(Modifier.iterator).range, "Iterator methods should not take any parameters")
             }
-        } else if (this.modifiers.has('get')) {
+        } else if (this.modifiers.has(Modifier.get)) {
             if (this.params.length > 0) {
-                proc.error(this.modifiers.rangeOf('get'), "Getter methods should not take any parameters")
+                proc.error(this.modifiers.get(Modifier.get).range, "Getter methods should not take any parameters")
             }
-        } else if (this.modifiers.has('set')) {
+        } else if (this.modifiers.has(Modifier.set)) {
             if (this.params.length != 1) {
-                proc.error(this.modifiers.rangeOf('set'), "Setter methods should only take 1 parameter")
+                proc.error(this.modifiers.get(Modifier.set).range, "Setter methods should only take 1 parameter")
             }
         }
 
         proc.validateType(this.retType)
         let uniqueNames: string[] = []
+
         let hasVararg = false
         proc.push()
+
+        if (proc.currentClass) {
+            for (let f of proc.currentClass.members) {
+                if (f instanceof Field) {
+                    proc.addVariable(Token.dummy(f.name),f.type)
+                }
+            }
+        }
+
         for (let p of this.params) {
             p.process(proc)
             if (uniqueNames.includes(p.name.value)) {
@@ -625,7 +700,6 @@ export class MethodNode extends ClassMember {
             if (hasVararg) {
                 proc.error(p.name.range, "Vararg parameter must be the last parameter")
             }
-            
         }
 
         if (this.body) {
@@ -655,15 +729,19 @@ export class ClassDeclaration extends Statement {
         if (proc.getTypeByName(this.name.value)) {
             proc.error(this.name.range, "Duplicate type " + this.name.value)
         } else {
+            console.log('indexing class ' + this.name.value)
             proc.types.push(this.type)
+            proc.currentClass = this.type
+            for (let m of this.body) {
+                m.index(proc)
+            }
+            proc.currentClass = undefined
         }
     }
 
     process(proc: Processor): void {
         proc.currentClass = this.type
-        for (let m of this.body) {
-            m.index(proc)
-        }
+        
         for (let m of this.body) {
             m.process(proc)
         }
@@ -718,7 +796,7 @@ export class ConstructorNode extends ClassMember {
     index(proc: Processor): void {
         if (proc.currentClass) {
             this.ctor = new Constructor(proc.currentClass,this.params.map(p=>p.generate(proc)),this.modifiers)
-            proc.currentClass.constructors.push(this.ctor)
+            proc.currentClass.addMember(this.ctor)
         }
     }
     process(proc: Processor): void {
@@ -749,4 +827,34 @@ export class ConstructorNode extends ClassMember {
         this.ctor.body = this.body?.generate(proc)
     }
 
+}
+
+export class FieldNode extends ClassMember {
+
+    field: Field | undefined
+    constructor(public name: Token, public type: TypeToken, public modifiers: ModifierList, public defValue?: Expression) {
+        super('field')
+    }
+
+    index(proc: Processor): void {
+        if (proc.currentClass) {
+            this.field = new Field(this.name.value,this.modifiers,proc.resolveType(this.type))
+            proc.currentClass.addMember(this.field)
+        }
+    }
+    process(proc: Processor): void {
+        proc.validateType(this.type)
+        if (this.defValue) {
+            let res = this.defValue.getResultType(proc)
+            let myType = proc.resolveType(this.type)
+            if (!res.canAssignTo(myType)) {
+                proc.error(this.defValue.range,"Expression of type " + res + " cannot be applied to " + myType)
+            }
+        }
+    }
+    generate(proc: Processor, cls: SplashClass): void {
+        if (!this.field) throw 'Field was not indexed!'
+        this.field.init = this.defValue?.generate(proc)
+    }
+    
 }

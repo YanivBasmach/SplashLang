@@ -1,14 +1,26 @@
 
 main {
-    var x = 5
     var name = "Yaniv"
 
     sayHi(name)
 
-    print(name)
+    var p = Person("Yaniv")
+    p.sayHi()
+
+    print("Person's name is {p.name}")
 }
 
 
 function sayHi(string name) {
     print("Hi, {name}!")
+}
+
+class Person {
+    string name
+
+    constructor(this.name)
+
+    sayHi() {
+        print("{name} says hi")
+    }
 }

@@ -1,7 +1,8 @@
+import { Modifier } from "./ast";
 import { SplashScript } from "./generator";
 import { nativeFunctionRegistry } from "./native";
 import { Field, Parameter, Value } from "./oop";
-import { SplashClass } from "./types";
+import { SplashClass, SplashType } from "./types";
 
 
 export class Runtime {
@@ -10,9 +11,16 @@ export class Runtime {
     currentInstance: Value | undefined
     returnValue: Value | undefined
     variables: {[name: string]: Value} = {}
+    types: SplashType[] = []
 
     constructor(public script: SplashScript) {
         
+    }
+
+    copy() {
+        let r = new Runtime(this.script)
+        r.types = [...this.types]
+        return r
     }
 
     declareVariable(name: string, value?: Value) {
@@ -32,12 +40,20 @@ export class Runtime {
         }
         for (let f of this.script.functions) {
             if (f.name == name && Parameter.allParamsMatch(f.params, params)) {
-                return f.invoke(new Runtime(this.script), ...params)
+                return f.invoke(this.copy(), ...params)
             }
         }
         for (let nf of nativeFunctionRegistry) {
             if (nf.name == name) {
-                return nf.func(new Runtime(this.script), ...params)
+                return nf.func(this.copy(), ...params)
+            }
+        }
+        for (let t of this.types) {
+            if (t instanceof SplashClass) {
+                if (t.name == name) {
+                    let ctor = t.getValidCtor(params)
+                    if (ctor) return ctor.invoke(this, undefined, ...params)
+                }
             }
         }
         return Value.null
@@ -46,7 +62,7 @@ export class Runtime {
     getVariable(name: string): Value {
         if (this.currentClass) {
             for (let m of this.currentClass.getMembers(name)) {
-                if (m instanceof Field && m.modifiers.has('static')) {
+                if (m instanceof Field && m.modifiers.has(Modifier.static)) {
                     return this.currentClass.staticFields[m.name]
                 }
             }
@@ -61,13 +77,14 @@ export class Runtime {
     }
 
     inClassStatic(cls: SplashClass) {
-        let r = new Runtime(this.script)
+        let r = this.copy()
         r.currentClass = cls
+        r.types = [...this.types]
         return r;
     }
 
     inClassInstance(value: Value) {
-        let r = new Runtime(this.script)
+        let r = this.copy()
         r.currentInstance = value
         if (value.type instanceof SplashClass) {
             r.currentClass = value.type

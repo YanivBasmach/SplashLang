@@ -1,9 +1,9 @@
-import { ClassDeclaration, MethodNode, ModifierList, ParameterNode, RootNode, SimpleFunction } from "./ast";
-import { GenFunction, SplashScript } from "./generator";
+import { ModifierList, ParameterNode, RootNode, SimpleFunction } from "./ast";
+import { GenFunction } from "./generator";
 import { BasicTypeToken, FunctionTypeToken, Method, SingleTypeToken, TypeToken } from "./oop";
 import { DummySplashType, SplashArray, SplashClass, SplashComboType, SplashFunctionType, SplashInt, SplashString, SplashType } from "./types";
 import { TextRange, Token } from "./tokenizer";
-import { nativeFunctionRegistry, NativeFunctions } from "./native";
+import { nativeFunctionRegistry } from "./native";
 
 
 export class Processor {
@@ -15,6 +15,7 @@ export class Processor {
     currentFunction: GenFunction | Method | undefined
     hasReturn = false
     hasErrors = false
+    silent = false
 
     constructor(public root: RootNode, public file: string) {
         for (let f of nativeFunctionRegistry) { // todo: remove this and replace with reading of SDK
@@ -35,9 +36,14 @@ export class Processor {
     }
 
     error(range: TextRange, msg: string) {
-        console.log("Validation error at " + TextRange.toString(range) + ": " + msg)
-        this.hasErrors = true
+        if (!this.silent) {
+            console.log("Validation error at " + TextRange.toString(range) + ": " + msg)
+            this.hasErrors = true
+        } else {
+            console.log('skipped error, processor is silent (',msg,')')
+        }
     }
+    
 
     push() {
         this.variables.push({})
@@ -58,7 +64,9 @@ export class Processor {
     }
 
     validateType(token: TypeToken) {
-
+        if (!this.resolveType(token)) {
+            this.error(token.range,"Unknown type " + token)
+        }
     }
 
     resolveTypeFromSingle(token: SingleTypeToken): SplashType {

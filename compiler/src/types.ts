@@ -1,8 +1,9 @@
 
 
-import { ExpressionList, ModifierList, ParameterNode } from "./ast"
+import { ExpressionList, Modifier, ModifierList, ParameterNode, SimpleFunction } from "./ast"
 import { BasicTypeToken, Constructor, Field, FunctionTypeToken, Member, Method, Parameter, TypeToken, Value } from "./oop"
 import { BinaryOperator, UnaryOperator } from "./operators"
+import { Processor } from "./processor"
 import { Runtime } from "./runtime"
 import { TextRange, Token } from "./tokenizer"
 
@@ -13,6 +14,7 @@ interface NativeMethod {
 }
 
 const nativeMethodRegistry: NativeMethod[] = []
+
 
 function Native(isStatic: boolean = false) {
     return function(target: any, propKey: string, descriptor: PropertyDescriptor) {
@@ -58,7 +60,7 @@ export abstract class SplashType {
         let name = Object.entries(BinaryOperator).find(e=>e[1] == op)?.[0] || ''
         let methods = this.getMethods(name)
         for (let m of methods) {
-            if (m.modifiers.has('operator') && m.params[0] && m.params[0].type == right) {
+            if (m.modifiers.has(Modifier.operator) && m.params[0] && m.params[0].type == right) {
                 return m
             }
         }
@@ -68,7 +70,7 @@ export abstract class SplashType {
         let name = Object.entries(UnaryOperator).find(e=>e[1] == op)?.[0] || ''
         let methods = this.getMethods(name)
         for (let m of methods) {
-            if (m.modifiers.has('operator')) {
+            if (m.modifiers.has(Modifier.operator)) {
                 return m
             }
         }
@@ -86,10 +88,9 @@ export abstract class SplashType {
         return this.members.find(m=>m instanceof Field && m.name == name)
     }
 
-    getInvoker(params: ExpressionList): Method | undefined {
-        let methods = this.getMethods('invoker')
-        for (let m of methods) {
-            if (m.modifiers.has('invoker') && params.canApplyTo(m.params)) {
+    getInvoker(proc: Processor, params: ExpressionList): Method | undefined {
+        for (let m of this.methods) {
+            if (m.modifiers.has(Modifier.invoker) && params.canApplyTo(proc,m.params)) {
                 return m
             }
         }
@@ -104,6 +105,9 @@ export abstract class SplashType {
         return this == type
     }
 
+    toString() {
+        return 'Type:' + this.name
+    }
 }
 
 export class SplashFunctionType extends SplashType {
@@ -196,7 +200,6 @@ export class SplashClass extends SplashType {
     private _members: Member[] = []
 
     staticFields: {[name: string]: Value} = {}
-    constructors: Constructor[] = []
 
     constructor(name: string) {
         super(name)
@@ -204,6 +207,18 @@ export class SplashClass extends SplashType {
 
     get members() {
         return this._members
+    }
+
+    get constructors(): Constructor[] {
+        return this._members.filter(m=>m instanceof Constructor).map(m=>m as Constructor)
+    }
+
+    addMember(m: Member) {
+        this._members.push(m)
+    }
+
+    getValidCtor(params: Value[]) {
+        return this.constructors.find(c=>Parameter.allParamsMatch(c.params,params))
     }
 }
 
@@ -222,8 +237,8 @@ export class SplashParameterizedType extends SplashType {
         return this.base.canAssignTo(type)
     }
 
-    getInvoker(params: ExpressionList) {
-        return this.base.getInvoker(params)
+    getInvoker(proc: Processor, params: ExpressionList) {
+        return this.base.getInvoker(proc, params)
     }
     
 }

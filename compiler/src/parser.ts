@@ -1,7 +1,8 @@
-import { ElseStatement, ArrayExpression, AssignableExpression, Assignment, BinaryExpression, CallAccess, CallStatement, CodeBlock, Expression, FieldAccess, IfStatement, InvalidExpression, LiteralExpression, MainBlock, RootNode, Statement, UnaryExpression, VarDeclaration, VariableAccess, ModifierList, ParameterNode, SimpleFunction, ReturnStatement, ExpressionList, StringExpression } from "./ast";
+import { ElseStatement, ArrayExpression, AssignableExpression, Assignment, BinaryExpression, CallAccess, CallStatement, CodeBlock, Expression, FieldAccess, IfStatement, InvalidExpression, LiteralExpression, MainBlock, RootNode, Statement, UnaryExpression, VarDeclaration, VariableAccess, ModifierList, ParameterNode, SimpleFunction, ReturnStatement, ExpressionList, StringExpression, ClassDeclaration, ClassMember, Modifier, MethodNode, FieldNode, ConstructorParamNode, ConstructorNode } from "./ast";
 import { BasicTypeToken, FunctionTypeToken, SingleTypeToken, TypeToken } from "./oop";
 import { AssignmentOperator, BinaryOperator } from "./operators";
 import { DelegateTokenizer, ExpressionSegment, LiteralSegment, Position, StringToken, TextRange, Token, Tokenizer, TokenType } from "./tokenizer";
+import { DummySplashType, SplashType } from "./types";
 
 export class Parser {
 
@@ -166,9 +167,13 @@ export class Parser {
                     return this.parseTopLevel(modifiers)
                 case 'function':
                     return this.parseFunction(modifiers)
+                case 'class':
+                    return this.parseClass(modifiers)
             }
         }
     }
+
+    
 
     parseBlock(): CodeBlock | undefined {
         if (this.isValueNext('{')) {
@@ -197,6 +202,96 @@ export class Parser {
             return block
         }
         return undefined
+    }
+
+    parseClassBody(): ClassMember[] {
+        let members: ClassMember[] = []
+        if (this.skipValue('{')) {
+            while (this.hasNext()) {
+                if (this.isNext(TokenType.line_end)) {
+                    this.next()
+                    continue
+                } else if (this.isValueNext('}')) {
+                    break
+                }
+                let s = this.parseClassMember(new ModifierList())
+                if (s) {
+                    members.push(s)
+                    if (this.hasNext()) {
+                        this.expect(TokenType.line_end)
+                    }
+                } else {
+                    while (this.hasNext() && !this.isNext(TokenType.line_end)) {
+                        this.next()
+                    }
+                }
+            }
+
+            this.expectValue('}')
+        }
+        return members
+    }
+
+    parseClassMember(modifiers: ModifierList): ClassMember | undefined {
+        let t = this.peek()
+        if (t.type == TokenType.identifier) {
+            if (t.value in Modifier) {
+                modifiers.add(this, t)
+                this.next()
+                return this.parseClassMember(modifiers)
+            }
+        }
+        if (t.value == 'constructor') {
+            this.next()
+            return this.parseConstructor(modifiers)
+        }
+        let type: TypeToken | undefined
+        if (this.peek(1).value == '(') {
+            type = TypeToken.void
+        } else {
+            type = this.parseTypeToken(true)
+            if (!type) return
+        }
+        let name = this.expect(TokenType.identifier)
+        if (!name) return
+        if (this.isValueNext('(')) {
+            return this.parseMethod(modifiers, type, name)
+        } else {
+            return this.parseField(modifiers, type, name)
+        }
+    }
+
+    parseMethod(modifiers: ModifierList, retType: TypeToken, name: Token): MethodNode {
+        modifiers.assertHasOnly(this,Modifier.final,Modifier.private,Modifier.abstract,Modifier.accessor,Modifier.assigner,Modifier.get,Modifier.set,Modifier.indexer,Modifier.invoker,Modifier.iterator,Modifier.native,Modifier.operator,Modifier.protected,Modifier.static)
+        modifiers.checkIncompatible(this,Modifier.final,Modifier.abstract)
+        modifiers.checkIncompatible(this,Modifier.accessor,Modifier.invoker,Modifier.assigner,Modifier.iterator,Modifier.operator,Modifier.indexer)
+        modifiers.checkIncompatible(this,Modifier.accessor,Modifier.invoker,Modifier.assigner,Modifier.iterator,Modifier.operator,Modifier.get,Modifier.set)
+        modifiers.checkIncompatible(this,Modifier.private,Modifier.operator,Modifier.indexer,Modifier.iterator,Modifier.invoker,Modifier.accessor,Modifier.assigner)
+
+        let params = this.parseParameterList()
+        let body: CodeBlock | undefined
+        if (this.isValueNext('{')) {
+            body = this.parseBlock()
+        }
+        return new MethodNode(name,retType,params,modifiers,body)
+    }
+
+    parseField(modifiers: ModifierList, type: TypeToken, name: Token): FieldNode {
+        modifiers.assertHasOnly(this,Modifier.final,Modifier.private,Modifier.readonly,Modifier.protected,Modifier.static)
+        modifiers.checkIncompatible(this,Modifier.private,Modifier.protected)
+        let defValue: Expression | undefined
+        if (this.skipValue('=')) {
+            defValue = this.parseExpression()
+        }
+        return new FieldNode(name, type, modifiers, defValue)
+    }
+
+    parseConstructor(modifiers: ModifierList) {
+        modifiers.assertHasOnly(this,Modifier.private,Modifier.protected)
+        modifiers.checkIncompatible(this,Modifier.private,Modifier.protected)
+        let params = this.parseCtorParameterList()
+        let body = this.parseBlock()
+        return new ConstructorNode(params,modifiers,body)
     }
 
     parseStatement(): Statement | undefined {
@@ -248,20 +343,30 @@ export class Parser {
     }
 
     parseFunction(modifiers: ModifierList): Statement | undefined {
-        modifiers.assertHasOnly(this,'private','native')
+        modifiers.assertHasOnly(this,Modifier.private,Modifier.native)
         let label = this.next()
-        if (this.isNext(TokenType.identifier)) {
-            let retType: TypeToken = TypeToken.void
-            
-            if (this.peek(1).value != '(') {
-                retType = this.parseTypeToken(true) || TypeToken.void
-            }
-            let name = this.expect(TokenType.identifier)
-            if (name && this.isValueNext('(')) {
-                let params = this.parseParameterList()
-                let code = this.parseBlock()
-                return new SimpleFunction(label.range, modifiers, name, retType, params, code)
-            }
+        let retType: TypeToken = TypeToken.void
+        
+        if (this.peek(1).value != '(') {
+            retType = this.parseTypeToken(true) || TypeToken.void
+        }
+        let name = this.expect(TokenType.identifier)
+        if (name && this.isValueNext('(')) {
+            let params = this.parseParameterList()
+            let code = this.parseBlock()
+            return new SimpleFunction(label.range, modifiers, name, retType, params, code)
+        }
+    }
+
+    parseClass(modifiers: ModifierList): ClassDeclaration | undefined {
+        this.next()
+        modifiers.assertHasOnly(this,Modifier.private,Modifier.abstract,Modifier.final)
+        modifiers.checkIncompatible(this,Modifier.abstract,Modifier.final)
+        let name = this.expect(TokenType.identifier)
+        if (name) {
+            // todo: add extends
+            let body = this.parseClassBody()
+            return new ClassDeclaration(name,body)
         }
     }
     
@@ -295,6 +400,44 @@ export class Parser {
                 }
                 return new ParameterNode(name, type, expr, vararg)
             }
+        }
+    }
+
+    parseCtorParameterList() {
+        let params: ConstructorParamNode[] = []
+        if (this.expectValue('(')) {
+            while (this.hasNext() && !this.isValueNext(')')) {
+                let p = this.parseCtorParameter();
+                if (p) {
+                    params.push(p)
+                }
+                if (!this.isValueNext(',')) {
+                    break
+                }
+            }
+            this.expectValue(')')
+        }
+        return params
+    }
+
+    parseCtorParameter(): ConstructorParamNode | undefined {
+        let setToField = false
+        let type: TypeToken | undefined
+        if (this.skipValue('this')) {
+            this.expectValue('.')
+            setToField = true
+        } else {
+            type = this.parseTypeToken(true)
+        }
+        let name = this.expect(TokenType.identifier)
+        if (name) {
+            let vararg = this.skipValue('...')
+
+            let expr: Expression | undefined
+            if (!vararg && this.skipValue('=')) {
+                expr = this.parseExpression()
+            }
+            return new ConstructorParamNode(name, setToField, type, expr, vararg)
         }
     }
 
