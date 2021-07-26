@@ -19,7 +19,8 @@ export enum BinaryOperator {
     as = 'as',
     range = '..',
     and = '&&',
-    or = '||'
+    or = '||',
+    default = '~'
 }
 
 export enum UnaryOperator {
@@ -38,4 +39,22 @@ export enum AssignmentOperator {
     mod = '%=',
     int_div = '//=',
     pow = '**='
+}
+
+export enum Modifier {
+    private,
+    protected,
+    abstract,
+    native,
+    final,
+    static,
+    readonly,
+    operator,
+    iterator,
+    get,
+    set,
+    indexer,
+    accessor,
+    assigner,
+    invoker
 }

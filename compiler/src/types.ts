@@ -1,47 +1,23 @@
 
 
-import { ExpressionList, Modifier, ModifierList, ParameterNode, SimpleFunction } from "./ast"
-import { BasicTypeToken, Constructor, Field, FunctionTypeToken, Member, Method, Parameter, TypeToken, Value } from "./oop"
-import { BinaryOperator, UnaryOperator } from "./operators"
+import { ExpressionList, ParameterNode } from "./ast"
+import { NativeMethods } from "./native"
+import { BasicTypeToken, Constructor, Field, FunctionTypeToken, Member, Method, Parameter, SingleTypeToken, TypeToken, Value } from "./oop"
+import { BinaryOperator, Modifier, UnaryOperator } from "./operators"
+import { Parser } from "./parser"
 import { Processor } from "./processor"
 import { Runtime } from "./runtime"
-import { TextRange, Token } from "./tokenizer"
-
-interface NativeMethod {
-    type: SplashType
-    name: string
-    func: (r: Runtime, val: Value, ...args: Value[])=>Value
-}
-
-const nativeMethodRegistry: NativeMethod[] = []
-
-
-function Native(isStatic: boolean = false) {
-    return function(target: any, propKey: string, descriptor: PropertyDescriptor) {
-        if (target instanceof SplashType) {
-            nativeMethodRegistry.push({
-                type: target,
-                name: propKey,
-                func: (r,v,...args)=>{
-                    return descriptor.value(r,v,...args)
-                }
-            })
-        }
-        
-    }
-}
-
-function NativeDelegate(target: any, propKey: string, descriptor: PropertyDescriptor) {
-
-}
-
+import { BaseTokenizer, TextRange, Token } from "./tokenizer"
 
 export abstract class SplashType {
+
+    protected _members: Member[] = []
+    staticFields: {[name: string]: Value} = {}
 
     constructor(public name: string) {
 
     }
-
+    
     get methods(): Method[] {
         return this.members.filter(m=>m instanceof Method).map(m=>m as Method)
     }
@@ -50,17 +26,36 @@ export abstract class SplashType {
         return Value.null
     }
 
-    abstract get members(): Member[]
+    get members(): Member[] {
+        let m = [...this._members]
+        if (!(this instanceof SplashClass) || this != SplashClass.object) {
+            m.push(...this.super.members)
+        }
+        return m
+    }
+
+    get super(): SplashType {
+        return SplashClass.object
+    }
+
+    addMember(m: Member) {
+        if (!this._members) {
+            this._members = []
+        }
+        this._members.push(m)
+    }
 
     toToken() {
         return new TypeToken([new BasicTypeToken(TextRange.end,Token.dummy(this.name),[],false)])
     }
 
     getBinaryOperation(op: BinaryOperator, right: SplashType): Method | undefined {
+        console.log('getting binop',op,'in',this.toString(),'with',right.toString())
+        console.log('methods:',this.methods)
         let name = Object.entries(BinaryOperator).find(e=>e[1] == op)?.[0] || ''
         let methods = this.getMethods(name)
         for (let m of methods) {
-            if (m.modifiers.has(Modifier.operator) && m.params[0] && m.params[0].type == right) {
+            if (m.modifiers.has(Modifier.operator) && m.params[0] && right.canAssignTo(m.params[0].type)) {
                 return m
             }
         }
@@ -98,15 +93,23 @@ export abstract class SplashType {
 
     getValidMethod(name: string, ...params: Value[]) {
         return this.getMethods(name)
-            .filter(m=>Parameter.allParamsMatch(m.params,params))[0]
+            .filter(m=>Parameter.allParamsMatch(m.params,params.map(p=>p.type)))[0]
     }
 
-    canAssignTo(type: SplashType) {
-        return this == type
+    canAssignTo(type: SplashType): boolean {
+        if (type == SplashClass.object) return true
+        if (this == type) return true
+        if (type instanceof SplashOptionalType) {
+            return this == type.inner
+        }
+        if (type instanceof SplashParameterizedType) {
+            return this.canAssignTo(type.base)
+        }
+        return false
     }
 
     toString() {
-        return 'Type:' + this.name
+        return this.name
     }
 }
 
@@ -123,17 +126,17 @@ export class SplashFunctionType extends SplashType {
     toToken() {
         return new TypeToken([new FunctionTypeToken(TextRange.end, this.params.map(p=>new ParameterNode(Token.dummy(p.name),p.type.toToken())),this.retType.toToken(),false)])
     }
+
+    toString() {
+        return 'function(' + this.params.map(p=>p.type.toString() + ' ' + p.name).join(',') + '): ' + this.retType.toString() 
+    }
     
 }
 
 export abstract class SplashPrimitive extends SplashType {
     
-    get members(): Member[] {
-        return []
-    }
-
     abstract get defaultValue(): Value
-    
+
 }
 
 export class SplashInt extends SplashPrimitive {
@@ -157,11 +160,6 @@ export class SplashArray extends SplashPrimitive {
     static of(type: SplashType) {
         return new SplashParameterizedType(SplashArray.instance,[type])
     }
-
-    @Native()
-    add(r: Runtime, arr: Value, obj: Value) {
-        arr.inner.push(obj)
-    }
 }
 
 export class SplashString extends SplashPrimitive {
@@ -171,14 +169,6 @@ export class SplashString extends SplashPrimitive {
     get defaultValue(): Value {
         return new Value(this, "")
     }
-
-    @Native()
-    chars(r: Runtime, str: Value) {
-        return new Value(SplashArray.of(this),(str.inner as string).split('').map(v=>new Value(this,v)))
-    }
-
-    @NativeDelegate
-    toLowerCase() {}
 }
 
 export class DummySplashType extends SplashType {
@@ -197,28 +187,16 @@ export class DummySplashType extends SplashType {
 export class SplashClass extends SplashType {
     static object = new SplashClass('object')
 
-    private _members: Member[] = []
-
-    staticFields: {[name: string]: Value} = {}
-
     constructor(name: string) {
         super(name)
-    }
-
-    get members() {
-        return this._members
     }
 
     get constructors(): Constructor[] {
         return this._members.filter(m=>m instanceof Constructor).map(m=>m as Constructor)
     }
 
-    addMember(m: Member) {
-        this._members.push(m)
-    }
-
     getValidCtor(params: Value[]) {
-        return this.constructors.find(c=>Parameter.allParamsMatch(c.params,params))
+        return this.constructors.find(c=>Parameter.allParamsMatch(c.params,params.map(p=>p.type)))
     }
 }
 
@@ -234,6 +212,16 @@ export class SplashParameterizedType extends SplashType {
     }
 
     canAssignTo(type: SplashType) {
+        if (type instanceof SplashParameterizedType) {
+            console.log(this.base,type)
+            let base = this.base.canAssignTo(type)
+            let sl = this.params.length == type.params.length 
+            let pm = false
+            if (sl) {
+                pm = this.params.every((t,i)=>t == type.params[i])
+            }
+            return base && sl && pm
+        }
         return this.base.canAssignTo(type)
     }
 
@@ -241,6 +229,10 @@ export class SplashParameterizedType extends SplashType {
         return this.base.getInvoker(proc, params)
     }
     
+    toString() {
+        return this.base.toString() + '<' + this.params.join(',') + '>'
+    }
+
 }
 
 export class SplashComboType extends SplashType {
@@ -259,9 +251,33 @@ export class SplashComboType extends SplashType {
 
 }
 
+export class SplashOptionalType extends SplashType {
+
+    constructor(public inner: SplashType) {
+        super('optional')
+    }
+
+    get members(): Member[] {
+        return this.inner.members
+    }
+
+    toString() {
+        return this.inner.toString() + '?'
+    }
+
+    canAssignTo(type: SplashType) {
+        return type instanceof SplashOptionalType && this.inner.canAssignTo(type.inner)
+    }
+
+    static of(type: SplashType) {
+        return new SplashOptionalType(type)
+    }
+    
+}
+
 export class SplashClassType extends SplashClass {
 
-    private static instance = new SplashClassType()
+    static instance = new SplashClassType()
 
     constructor() {
         super('Class')
@@ -270,4 +286,43 @@ export class SplashClassType extends SplashClass {
     static of(type: SplashType) {
         return new SplashParameterizedType(SplashClassType.instance,[type])
     }
+}
+
+export function resolveTypeBasic(token: TypeToken, types: SplashType[], paramGen?: (node: ParameterNode)=>Parameter, currentType?: SplashType): SplashType {
+    if (token.options.length == 1) {
+        let st = token.options[0]
+        return resolveTypeFromSingle(st,types,paramGen,currentType) || DummySplashType.null
+    }
+    return new SplashComboType(token.options.map(t=>resolveTypeFromSingle(t,types,paramGen,currentType)))
+}
+
+function resolveTypeFromSingle(token: SingleTypeToken, types: SplashType[], paramGen?: (node: ParameterNode)=>Parameter, currentType?: SplashType): SplashType {
+    if (token instanceof BasicTypeToken) {
+        let t = types.find(t=>t.name == token.base.value)
+        if (t) {
+            if (token.typeParams.length > 0) {
+                let hasInvalid = false
+                let params = token.typeParams.map(p=>{
+                    let rt = resolveTypeBasic(p,types,paramGen)
+                    if (!rt) hasInvalid = true
+                    return rt
+                })
+                if (hasInvalid) return DummySplashType.null
+                t = new SplashParameterizedType(t,params)
+            }
+            return token.optional ? SplashOptionalType.of(t) : t
+        } else if (token.base.value == 'this' && currentType) {
+            return currentType
+        }
+    } else if (token instanceof FunctionTypeToken) {
+        let f = new SplashFunctionType(token.params.map(p=>paramGen ? paramGen(p) : undefined).filter(p=>p !== undefined) as Parameter[],resolveTypeBasic(token.returnType,types,paramGen))
+        return token.optional ? SplashOptionalType.of(f) : f
+    }
+    return DummySplashType.null
+}
+
+export function resolveTypeFromString(str: string, types: SplashType[], currentType?: SplashType) {
+    let token = new Parser('unknown',new BaseTokenizer(str)).parseTypeToken(true)
+    if (!token) return
+    return resolveTypeBasic(token,types,(n)=>new Parameter(n.name.value,resolveTypeBasic(n.type,types,undefined)),currentType)
 }

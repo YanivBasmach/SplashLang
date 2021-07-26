@@ -4,14 +4,14 @@ native function print(string msg)
 
 native function string readString(string? msg)
 
-native function int randomHashCode()
+native function int randomUID()
 
 class object {
 
-    readonly int hashCode = randomHashCode()=
+    int uid = randomUID()
 
     operator boolean equals(this other) {
-        return this.hashCode == other.hashCode
+        return this.uid == other.uid
     }
 
     operator string plus(string str) {
@@ -19,11 +19,19 @@ class object {
     }
 
     string toString() {
-        return "{this.class.name}({this.hashCode})
+        return "Object:{this.uid}"
     }
+
+}
+
+class string {
+
+}
+
+class int {
+    native operator boolean equals(int other)
+}
+
+class boolean {
     
-    native accessor object get(string field)
-
-    native accessor object set(string field, object value)
-
 }

@@ -1,39 +1,43 @@
 import { ModifierList, ParameterNode, RootNode, SimpleFunction } from "./ast";
-import { GenFunction } from "./generator";
+import { GenFunction, SplashScript } from "./generator";
 import { BasicTypeToken, FunctionTypeToken, Method, SingleTypeToken, TypeToken } from "./oop";
-import { DummySplashType, SplashArray, SplashClass, SplashComboType, SplashFunctionType, SplashInt, SplashString, SplashType } from "./types";
+import { DummySplashType, resolveTypeBasic, SplashArray, SplashClass, SplashComboType, SplashFunctionType, SplashInt, SplashOptionalType, SplashParameterizedType, SplashString, SplashType } from "./types";
 import { TextRange, Token } from "./tokenizer";
-import { nativeFunctionRegistry } from "./native";
+import { SplashModule } from "./env";
 
 
 export class Processor {
 
     variables: VariableFrame[] = [{}]
     types: SplashType[] = []
-    functions: SimpleFunction[] = []
+    rawFunctions: SimpleFunction[] = []
+    functions: GenFunction[] = []
     currentClass: SplashClass | undefined
     currentFunction: GenFunction | Method | undefined
     hasReturn = false
     hasErrors = false
     silent = false
+    inInstanceContext = false
 
     constructor(public root: RootNode, public file: string) {
-        for (let f of nativeFunctionRegistry) { // todo: remove this and replace with reading of SDK
-            this.functions.push(new SimpleFunction(TextRange.end,new ModifierList(),Token.dummy(f.name),TypeToken.dummy(f.retType),f.params.map(p=>{
-                return new ParameterNode(Token.EOF,TypeToken.dummy(p))
-            })))
+        
+    }
+
+    import(module: SplashModule) {
+        for (let s of module.scripts) {
+            this.importScript(s)
         }
-        this.types.push(SplashString.instance)
-        this.types.push(SplashInt.instance)
-        this.types.push(DummySplashType.void)
-        this.types.push(DummySplashType.null)
-        this.types.push(SplashClass.object)
-        this.types.push(SplashArray.instance)
+    }
+
+    importScript(script: SplashScript) {
+        this.types.push(...script.classes)
+        this.functions.push(...script.functions)
     }
 
     process() {
         this.root.process(this)
     }
+    
 
     error(range: TextRange, msg: string) {
         if (!this.silent) {
@@ -64,26 +68,22 @@ export class Processor {
     }
 
     validateType(token: TypeToken) {
-        if (!this.resolveType(token)) {
+        if (token.toString() != 'null' && this.resolveType(token) == DummySplashType.null) {
             this.error(token.range,"Unknown type " + token)
         }
     }
 
-    resolveTypeFromSingle(token: SingleTypeToken): SplashType {
-        if (token instanceof BasicTypeToken) {
-            return this.types.find(t=>t.name == token.base.value) || DummySplashType.null
-        } else if (token instanceof FunctionTypeToken) {
-            return new SplashFunctionType(token.params.map(p=>p.generate(this)),this.resolveType(token.returnType))
+    getFunctionType(name: string): SplashFunctionType | undefined {
+        for (let f of this.functions) {
+            if (f.name == name) return f.toFunctionType()
         }
-        return DummySplashType.null
+        for (let f of this.rawFunctions) {
+            if (f.name.value == name) return f.toFunctionType(this)
+        }
     }
 
     resolveType(token: TypeToken): SplashType {
-        if (token.options.length == 1) {
-            let st = token.options[0]
-            return this.resolveTypeFromSingle(st)
-        }
-        return new SplashComboType(token.options.map(t=>this.resolveTypeFromSingle(t)))
+        return resolveTypeBasic(token,this.types,(n)=>n.generate(this),this.currentClass)
     }
 
     getVariable(name: string) {

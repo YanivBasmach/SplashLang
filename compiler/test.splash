@@ -2,25 +2,21 @@
 main {
     var name = "Yaniv"
 
-    sayHi(name)
-
     var p = Person("Yaniv")
     p.sayHi()
 
     print("Person's name is {p.name}")
 }
 
-
-function sayHi(string name) {
-    print("Hi, {name}!")
-}
-
 class Person {
     string name
+    int age
 
-    constructor(this.name)
+    constructor(this.name, int? age) {
+        this.age = age ~ 5
+    }
 
     sayHi() {
-        print("{name} says hi")
+        print("{name} says hi, he's {age} years old")
     }
 }

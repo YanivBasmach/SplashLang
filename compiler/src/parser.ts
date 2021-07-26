@@ -1,6 +1,6 @@
-import { ElseStatement, ArrayExpression, AssignableExpression, Assignment, BinaryExpression, CallAccess, CallStatement, CodeBlock, Expression, FieldAccess, IfStatement, InvalidExpression, LiteralExpression, MainBlock, RootNode, Statement, UnaryExpression, VarDeclaration, VariableAccess, ModifierList, ParameterNode, SimpleFunction, ReturnStatement, ExpressionList, StringExpression, ClassDeclaration, ClassMember, Modifier, MethodNode, FieldNode, ConstructorParamNode, ConstructorNode } from "./ast";
+import { ElseStatement, NullExpression, ArrayExpression, AssignableExpression, Assignment, BinaryExpression, CallAccess, CallStatement, CodeBlock, Expression, FieldAccess, IfStatement, InvalidExpression, LiteralExpression, MainBlock, RootNode, Statement, UnaryExpression, VarDeclaration, VariableAccess, ModifierList, ParameterNode, SimpleFunction, ReturnStatement, ExpressionList, StringExpression, ClassDeclaration, ClassMember, MethodNode, FieldNode, ConstructorParamNode, ConstructorNode, ThisAccess, ASTNode } from "./ast";
 import { BasicTypeToken, FunctionTypeToken, SingleTypeToken, TypeToken } from "./oop";
-import { AssignmentOperator, BinaryOperator } from "./operators";
+import { AssignmentOperator, BinaryOperator, Modifier } from "./operators";
 import { DelegateTokenizer, ExpressionSegment, LiteralSegment, Position, StringToken, TextRange, Token, Tokenizer, TokenType } from "./tokenizer";
 import { DummySplashType, SplashType } from "./types";
 
@@ -234,7 +234,7 @@ export class Parser {
 
     parseClassMember(modifiers: ModifierList): ClassMember | undefined {
         let t = this.peek()
-        if (t.type == TokenType.identifier) {
+        if (t.type == TokenType.keyword) {
             if (t.value in Modifier) {
                 modifiers.add(this, t)
                 this.next()
@@ -378,7 +378,7 @@ export class Parser {
                 if (p) {
                     params.push(p)
                 }
-                if (!this.isValueNext(',')) {
+                if (!this.skipValue(',')) {
                     break
                 }
             }
@@ -411,7 +411,7 @@ export class Parser {
                 if (p) {
                     params.push(p)
                 }
-                if (!this.isValueNext(',')) {
+                if (!this.skipValue(',')) {
                     break
                 }
             }
@@ -469,8 +469,8 @@ export class Parser {
             if (ret) {
                 return new FunctionTypeToken(range.end(), params, ret, optional)
             }
-        } else {
-            let base = this.expect(TokenType.identifier)
+        } else if (this.isNext(TokenType.identifier) || this.isNext(TokenType.keyword)) {
+            let base = this.next()
             if (base) {
                 let params: TypeToken[] = []
                 if (this.skipValue('<')) {
@@ -601,7 +601,7 @@ export class Parser {
 
     parseIsInExpression(): Expression {
         let expr = this.parseUnaryExpression()
-        while (this.isValueNext('as','in')) {
+        while (this.isValueNext('as','in','~')) {
             expr = new BinaryExpression(expr,this.next(),this.parseUnaryExpression());
         }
         return expr
@@ -635,6 +635,10 @@ export class Parser {
         } else if (this.skipValue('(')) {
             expr = this.parseExpression()
             this.expectValue(')')
+        } else if (this.isValueNext('this')) {
+            expr = new ThisAccess(this.next())
+        } else if (this.isValueNext('null')) {
+            expr = new NullExpression(this.next())
         } else {
             return new InvalidExpression()
         }

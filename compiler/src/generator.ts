@@ -2,7 +2,7 @@ import { Expression } from "./ast";
 import { NativeFunctions } from "./native";
 import { Parameter, Value } from "./oop";
 import { AssignmentOperator, BinaryOperator, UnaryOperator } from "./operators";
-import { SplashArray, SplashClass, SplashComboType, SplashInt, SplashString, SplashType } from "./types";
+import { SplashArray, SplashClass, SplashComboType, SplashFunctionType, SplashInt, SplashOptionalType, SplashString, SplashType } from "./types";
 import { Returned, Runtime } from "./runtime";
 import { TokenType } from "./tokenizer";
 
@@ -42,15 +42,15 @@ export class GeneratedBlock extends GeneratedStatement {
 }
 
 
-export class SplashScript extends Generated {
+export class SplashScript {
 
     functions: GenFunction[] = []
     vars: GenVarDeclaration[] = []
-    classes: GenClassDecl[] = []
+    classes: SplashClass[] = []
     main?: GeneratedBlock
 
     constructor(public name: string) {
-        super()
+        
     }
 
     run(runtime: Runtime) {
@@ -80,6 +80,10 @@ export class GenFunction extends GeneratedStatement {
         super()
     }
 
+    toFunctionType() {
+        return new SplashFunctionType(this.params,this.retType)
+    }
+
     run(runtime: Runtime): void {
         
     }
@@ -97,7 +101,7 @@ export class GenFunction extends GeneratedStatement {
             this.body.run(r)
             return r.returnValue || Value.void
         } else {
-            return NativeFunctions.invokeFunction(r, this.name, params)
+            return NativeFunctions.invoke(r, this.name, params)
         }
     }
 
@@ -197,7 +201,7 @@ export class GenFieldAccess extends GenAssignableExpression {
         return this.expr.evaluate(runtime)
     }
     evalSelf(runtime: Runtime, parent?: Value): Value {
-        return parent?.get(runtime, this.field)
+        return parent?.get(runtime, this.field) || Value.null
     }
     
 }
@@ -236,8 +240,9 @@ export class GenAssignment extends GeneratedStatement {
             let self = this.variable.evalSelf(runtime)
             toAssign = self.invokeBinOperator(runtime, this.op.substring(1) as BinaryOperator, val)
         }
-
-        this.variable.assign(runtime, parent, toAssign)
+        if (!(toAssign.type instanceof SplashOptionalType)) {
+            this.variable.assign(runtime, parent, toAssign)
+        }
     }
     
 }
@@ -325,12 +330,22 @@ export class GeneratedReturn extends GeneratedStatement {
 }
 
 export class GenClassDecl extends GeneratedStatement {
-    constructor(public cls: SplashClass) {
+    constructor(public type: SplashClass) {
+        super()
+    }
+    run(runtime: Runtime): void {
+        
+    }
+}
+
+export class GenConstExpression extends GeneratedExpression {
+    
+    constructor(public value: Value) {
         super()
     }
 
-    run(runtime: Runtime): void {
-        
+    evaluate(runtime: Runtime): Value {
+        return this.value
     }
     
 }

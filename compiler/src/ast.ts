@@ -1,10 +1,10 @@
+import { GenArrayCreation, GenAssignableExpression, GenAssignment, GenCall, GenCallAccess, GenClassDecl, GenConstExpression, Generated, GeneratedBinary, GeneratedBlock, GeneratedExpression, GeneratedLiteral, GeneratedReturn, GeneratedStatement, GeneratedUnary, GenFieldAccess, GenFunction, GenIfStatement, GenStringLiteral, GenVarAccess, GenVarDeclaration, SplashScript } from "./generator";
 import { ExpressionSegment, StringToken, TextRange, Token, TokenType } from "./tokenizer";
 import { Parser } from "./parser";
-import { Constructor, CtorParameter, Field, Member, Method, Parameter, TypeToken } from "./oop";
+import { Constructor, CtorParameter, Field, Member, Method, Parameter, TypeToken, Value } from "./oop";
 import { Processor } from "./processor";
-import { GenArrayCreation, GenAssignableExpression, GenAssignment, GenCall, GenCallAccess, GenClassDecl, Generated, GeneratedBinary, GeneratedBlock, GeneratedExpression, GeneratedLiteral, GeneratedReturn, GeneratedStatement, GeneratedUnary, GenFieldAccess, GenFunction, GenIfStatement, GenStringLiteral, GenVarAccess, GenVarDeclaration, SplashScript } from "./generator";
-import { AssignmentOperator, BinaryOperator, UnaryOperator } from "./operators";
-import { DummySplashType, SplashArray, SplashClass, SplashClassType, SplashComboType, SplashFunctionType, SplashInt, SplashParameterizedType, SplashString, SplashType } from "./types";
+import { AssignmentOperator, BinaryOperator, Modifier, UnaryOperator } from "./operators";
+import { DummySplashType, SplashArray, SplashClass, SplashClassType, SplashComboType, SplashFunctionType, SplashInt, SplashOptionalType, SplashParameterizedType, SplashString, SplashType } from "./types";
 
 
 export abstract class ASTNode {
@@ -44,7 +44,8 @@ export class RootNode extends ASTNode {
             } else if (s instanceof MainBlock) {
                 script.main = s.generate(proc)
             } else if (s instanceof ClassDeclaration) {
-                script.classes.push(s.generate(proc))
+                s.generate(proc)
+                script.classes.push(s.type)
             }
         }
         return script
@@ -156,16 +157,8 @@ export class ExpressionList {
     }
 
     canApplyTo(proc: Processor, parameters: Parameter[]) {
-        for (let i = 0; i < this.values.length; i++) {
-            let v = this.values[i]
-            let p = Parameter.getParamAt(i,parameters)
-            let type = v.getResultType(proc)
-            if (!p || !type.canAssignTo(p.type)) {
-                return false;
-            }
-        }
-        // todo: ensure there are no required parameters without a value assigned
-        return true;
+        // todo: add specific errors for what cannot be applied
+        return Parameter.allParamsMatch(parameters, this.values.map(v=>v.getResultType(proc)))
     }
 
     generate(proc: Processor) {
@@ -187,7 +180,7 @@ export class BinaryExpression extends Expression {
         if (binop) {
             return binop.retType
         }
-        proc.error(this.op.range, "Operator " + this.op.value + " cannot be applied to " + leftType)
+        proc.error(this.op.range, "Operator " + this.op.value + " cannot be applied to " + leftType + ' and ' + rightType)
         return SplashClass.object
     }
 
@@ -360,19 +353,19 @@ export class VariableAccess extends AssignableExpression {
 
     getResultType(proc: Processor): SplashType {
         let v = proc.getVariable(this.name.value);
-        let func = proc.functions.find(f=>f.name.value == this.name.value)
+        let func = proc.getFunctionType(this.name.value)
         if (v) {
             if (func) {
-                return new SplashComboType([v.type,func.toFunctionType(proc)])
+                return new SplashComboType([v.type,func])
             }
             return v.type
         } else if (func) {
-            return func.toFunctionType(proc)
+            return func
         } else {
             let cls = proc.types.find(t=>t.name == this.name.value)
             if (cls) return SplashClassType.of(cls)
         }
-        console.log('variable ' + this.name.value + ' not found in',proc.variables)
+        console.log('variable ' + this.name.value + ' not found in',proc)
         proc.error(this.name.range,"Unknown variable '" + this.name.value + "'")
         return SplashClass.object
     }
@@ -433,30 +426,16 @@ export class CallStatement extends Statement {
     }
 }
 
-export enum Modifier {
-    private,
-    protected,
-    abstract,
-    native,
-    final,
-    static,
-    readonly,
-    operator,
-    iterator,
-    get,
-    set,
-    indexer,
-    accessor,
-    assigner,
-    invoker
-}
 
 export class ModifierList extends ASTNode {
 
     modifiers: Token[] = []
 
-    constructor() {
+    constructor(initial?: Modifier[]) {
         super('modifiers')
+        if (initial) {
+            this.modifiers.push(...initial.map(i=>Token.dummy(Modifier[i])))
+        }
     }
 
     has(mod: Modifier) {
@@ -521,14 +500,20 @@ export class ParameterNode extends ASTNode {
             proc.error(this.name.range, "A parameter cannot be both vararg and have a default value")
         }
         if (this.defValue) {
-            if (!this.type.canAccept(this.defValue.getResultType(proc))) {
+            let resolved = proc.resolveType(this.type)
+            if (!this.defValue.getResultType(proc).canAssignTo(resolved)) {
                 proc.error(this.defValue.range, "This expression cannot be assigned to this parameter's type")
             }
         }
     }
 
     generate(proc: Processor) {
-        return new Parameter(this.name.value,proc.resolveType(this.type),this.defValue?.generate(proc),this.vararg)
+        let type = proc.resolveType(this.type)
+        let def: GeneratedExpression | undefined
+        if (this.defValue) {
+            def = this.defValue.generate(proc)
+        }
+        return new Parameter(this.name.value,type,def,this.vararg)
     }
 
 }
@@ -540,7 +525,7 @@ export class SimpleFunction extends Statement {
     }
 
     index(proc: Processor) {
-        proc.functions.push(this)
+        proc.rawFunctions.push(this)
     }
 
     process(proc: Processor) {
@@ -627,7 +612,7 @@ export class MethodNode extends ClassMember {
 
     index(proc: Processor) {
         if (proc.currentClass) {
-            this.method = new Method(proc.currentClass, this.name.value, proc.resolveType(this.retType),this.params.map(p=>p.generate(proc)),this.modifiers)
+            this.method = new Method(this.name.value, proc.resolveType(this.retType),this.params.map(p=>p.generate(proc)),this.modifiers)
             proc.currentClass.addMember(this.method)
         }
     }
@@ -680,6 +665,7 @@ export class MethodNode extends ClassMember {
 
         let hasVararg = false
         proc.push()
+        proc.inInstanceContext = !this.modifiers.has(Modifier.static)
 
         if (proc.currentClass) {
             for (let f of proc.currentClass.members) {
@@ -707,6 +693,7 @@ export class MethodNode extends ClassMember {
         }
 
         proc.pop()
+        proc.inInstanceContext = false
     }
 
     generate(proc: Processor, cls: SplashClass): void {
@@ -731,30 +718,27 @@ export class ClassDeclaration extends Statement {
         } else {
             console.log('indexing class ' + this.name.value)
             proc.types.push(this.type)
-            proc.currentClass = this.type
-            for (let m of this.body) {
-                m.index(proc)
-            }
-            proc.currentClass = undefined
         }
     }
 
     process(proc: Processor): void {
         proc.currentClass = this.type
+
+        for (let m of this.body) {
+            m.index(proc)
+        }
         
         for (let m of this.body) {
             m.process(proc)
         }
         proc.currentClass = undefined
     }
-    generate(proc: Processor): GenClassDecl {
+    generate(proc: Processor): GeneratedStatement {
         proc.currentClass = this.type
         for (let m of this.body) {
             m.generate(proc,this.type)
         }
-        let res = new GenClassDecl(this.type)
-        proc.currentClass = undefined
-        return res
+        return new GenClassDecl(this.type)
     }
     
 }
@@ -782,7 +766,14 @@ export class ConstructorParamNode extends ASTNode {
     }
 
     generate(proc: Processor): CtorParameter {
-        return new CtorParameter(this.name.value,this.type ? proc.resolveType(this.type) : proc.currentClass?.getField(this.name.value)?.type || SplashClass.object,this.assignToField,this.defValue?.generate(proc),this.vararg)
+        let def: GeneratedExpression | undefined
+        let type = this.type ? proc.resolveType(this.type) : proc.currentClass?.getField(this.name.value)?.type || SplashClass.object
+        if (type instanceof SplashOptionalType) {
+            def = new GenConstExpression(new Value(type,null))
+        } else if (this.defValue) {
+            def = this.defValue.generate(proc)
+        }
+        return new CtorParameter(this.name.value,type,this.assignToField,def,this.vararg)
     }
 }
 
@@ -803,6 +794,7 @@ export class ConstructorNode extends ClassMember {
         let uniqueNames: string[] = []
         let hasVararg = false
         proc.push()
+        proc.inInstanceContext = true
         for (let p of this.params) {
             p.process(proc)
             if (uniqueNames.includes(p.name.value)) {
@@ -821,6 +813,7 @@ export class ConstructorNode extends ClassMember {
         }
 
         proc.pop()
+        proc.inInstanceContext = false
     }
     generate(proc: Processor, cls: SplashClass): void {
         if (!this.ctor) throw 'Constructor node was not indexed!'
@@ -855,6 +848,43 @@ export class FieldNode extends ClassMember {
     generate(proc: Processor, cls: SplashClass): void {
         if (!this.field) throw 'Field was not indexed!'
         this.field.init = this.defValue?.generate(proc)
+    }
+    
+}
+
+export class NullExpression extends Expression {
+
+    constructor(token: Token) {
+        super('null',token.range)
+    }
+
+    getResultType(proc: Processor): SplashType {
+        return DummySplashType.null
+    }
+    generate(proc: Processor): GeneratedExpression {
+        return new GenConstExpression(Value.null)
+    }
+    
+}
+
+export class ThisAccess extends Expression {
+
+    constructor(token: Token) {
+        super('this',token.range)
+    }
+
+    getResultType(proc: Processor): SplashType {
+        if (!proc.currentClass) {
+            proc.error(this.range,"Cannot use 'this' in this context")
+            return DummySplashType.null
+        } else if (!proc.inInstanceContext) {
+            proc.error(this.range,"Cannot use 'this' in a static context")
+            return DummySplashType.null
+        }
+        return proc.currentClass
+    }
+    generate(proc: Processor): GeneratedExpression {
+        return new GenVarAccess('this')
     }
     
 }

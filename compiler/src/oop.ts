@@ -1,10 +1,12 @@
-import { ExpressionList, Modifier, ModifierList, ParameterNode } from "./ast";
+import { ExpressionList, ModifierList, ParameterNode, RootNode } from "./ast";
 import { GeneratedBlock, GeneratedExpression, SplashScript } from "./generator";
-import { BinaryOperator, UnaryOperator } from "./operators";
+import { BinaryOperator, Modifier, UnaryOperator } from "./operators";
 import { Runtime } from "./runtime";
-import { TextRange, Token } from "./tokenizer";
-import { DummySplashType, SplashClass, SplashFunctionType, SplashPrimitive, SplashString, SplashType } from "./types";
-import { NativeFunctions } from "./native";
+import { BaseTokenizer, TextRange, Token } from "./tokenizer";
+import { DummySplashType, SplashClass, SplashFunctionType, SplashOptionalType, SplashParameterizedType, SplashPrimitive, SplashString, SplashType } from "./types";
+import { NativeFunctions, NativeMethods } from "./native";
+import { Parser } from "./parser";
+import { Processor } from "./processor";
 
 export abstract class SingleTypeToken {
     constructor(public range: TextRange, public optional: boolean) {
@@ -70,13 +72,13 @@ export interface Member {
 
 export abstract class ClassExecutable implements Member {
 
-    constructor(public cls: SplashClass, public params: Parameter[], public modifiers: ModifierList) {
+    constructor(public params: Parameter[], public modifiers: ModifierList) {
 
     }
     abstract name: string;
     abstract type: SplashType;
 
-    abstract invoke(runtime: Runtime, thisArg?: Value, ...params: Value[]): Value
+    abstract invoke(runtime: Runtime, inType: SplashType, thisArg?: Value, ...params: Value[]): Value
 
 }
 
@@ -85,32 +87,26 @@ export class Method extends ClassExecutable {
     body?: GeneratedBlock
     type: SplashType
 
-    constructor(cls: SplashClass, public name: string, public retType: SplashType, params: Parameter[], modifiers: ModifierList) {
-        super(cls,params,modifiers)
+    constructor(public name: string, public retType: SplashType, params: Parameter[], modifiers: ModifierList) {
+        super(params,modifiers)
         this.type = new SplashFunctionType(this.params,this.retType)
     }
 
-    invoke(runtime: Runtime, thisArg?: Value, ...params: Value[]): Value {
+    invoke(runtime: Runtime, inType: SplashType, thisArg?: Value, ...params: Value[]): Value {
         let r: Runtime
         if (this.modifiers.has(Modifier.static)) {
-            r = runtime.inClassStatic(this.cls)
+            r = runtime.inTypeStatic(inType)
         } else if (thisArg) {
-            r = runtime.inClassInstance(thisArg)
+            r = runtime.inTypeInstance(thisArg)
         } else {
             return Value.null
         }
         if (this.body) {
-            for (let i = 0; i < params.length; i++) {
-                let pv = params[i]
-                let p = Parameter.getParamAt(i,this.params)
-                if (p) {
-                    r.setVariable(p.name,pv)
-                }
-            }
+            Parameter.initParams(r,this.params,params)
             this.body.run(r)
             return r.returnValue || Value.void
         } else {
-            return NativeFunctions.invokeMethod(r, this.cls, this.name, params)
+            return NativeMethods.invoke(r, inType, this.name, params, thisArg)
         }
         
     }
@@ -141,22 +137,41 @@ export class Parameter {
             } else if (i < values.length) {
                 runtime.setVariable(p.name, values[i])
             } else {
-                runtime.setVariable(p.name, p.defValue?.evaluate(runtime) || Value.null)
+                let val = p.defValue?.evaluate(runtime) || Value.null
+                runtime.setVariable(p.name, val)
             }
         }
     }
 
-    static allParamsMatch(params: Parameter[], values: Value[]) {
-        for (let i = 0; i < values.length; i++) {
-            let v = values[i]
-            let p = Parameter.getParamAt(i,params)
-            if (p) {
-                if (!v.type.canAssignTo(p.type)) return false
-            } else {
+    static allParamsMatch(params: Parameter[], types: SplashType[]) {
+        for (let i = 0; i < params.length; i++) {
+            let p = params[i]
+            if (i < types.length) {
+                if (p.vararg) {
+                    let rest = types.slice(i)
+                    if (!rest.every(r=>r.canAssignTo((p.type as SplashParameterizedType).params[0]))) {
+                        return false
+                    }
+                } else {
+                    if (!types[i].canAssignTo(p.type)) {
+                        return false
+                    }
+                }
+            } else if (!(p.type instanceof SplashOptionalType) && !p.defValue) {
                 return false
             }
         }
-        return true
+        return true;
+    }
+
+    static readFromString(str: string, types: SplashType[], inType?: SplashType) {
+        let parser = new Parser('unknown',new BaseTokenizer(str))
+        let p = parser.parseParameter()
+        if (!p) throw 'Cannot create parameter from ' + str
+        let proc = new Processor(new RootNode(),'unknown');
+        proc.types.push(...types)
+        proc.currentClass = inType instanceof SplashClass ? inType : undefined
+        return p.generate(proc)
     }
 }
 
@@ -171,30 +186,29 @@ export class Constructor extends ClassExecutable {
     body?: GeneratedBlock
     type: SplashType
     name: string = 'constructor'
-    constructor(cls: SplashClass, params: CtorParameter[], modifiers: ModifierList) {
-        super(cls,params,modifiers)
-        this.type = new SplashFunctionType(this.params,this.cls)
+    constructor(type: SplashType, params: CtorParameter[], modifiers: ModifierList) {
+        super(params,modifiers)
+        this.type = new SplashFunctionType(this.params,type)
     }
 
-    invoke(runtime: Runtime, thisArg?: Value, ...params: Value[]): Value {
-        let r = runtime.inClassStatic(this.cls)
-        let val = new Value(this.cls,{})
-        let newRt = r.inClassInstance(val)
-        for (let m of this.cls.members) {
+    invoke(runtime: Runtime, inType: SplashType, thisArg?: Value, ...params: Value[]): Value {
+        let val = new Value(inType,{})
+        let r = runtime.inTypeInstance(val)
+        for (let m of inType.members) {
             if (m instanceof Field) {
-                val.set(newRt,m.name,m.defaultValue(r))
+                val.set(r,m.name,m.defaultValue(r))
             }
         }
         
-        Parameter.initParams(newRt, this.params, params)
+        Parameter.initParams(r, this.params, params)
         for (let i = 0; i < params.length; i++) {
             let v = params[i]
             let cp = Parameter.getParamAt(i,this.params)
             if (cp instanceof CtorParameter && cp.assignToField) {
-                val.set(newRt,cp.name,v)
+                val.set(r,cp.name,v)
             }
         }
-        this.body?.run(newRt)
+        this.body?.run(r)
         return val
     }
 
@@ -222,15 +236,17 @@ export class Value {
 
     invokeMethod(runtime: Runtime, name: string, ...params: Value[]): Value {
         let method = this.type.getValidMethod(name,...params)
-        
-        return method.invoke(runtime,this,...params)
+        if (!method) {
+            console.log('could not find method',name,params,'in',this)
+        }
+        return method.invoke(runtime,this.type,this,...params)
     }
 
     invoke(runtime: Runtime, ...params: Value[]) {
         let invoker = this.type.methods.filter(m=>m.modifiers.has(Modifier.invoker))
-            .filter(m=>Parameter.allParamsMatch(m.params, params))
+            .filter(m=>Parameter.allParamsMatch(m.params, params.map(v=>v.type)))
         
-        return invoker[0].invoke(runtime,this,...params)
+        return invoker[0].invoke(runtime,this.type,this,...params)
     }
 
     getAccessor() {
@@ -247,10 +263,13 @@ export class Value {
             [0]
     }
 
-    get(runtime: Runtime, field: string) {
+    get(runtime: Runtime, field: string): Value {
         let acc = this.getAccessor()
         if (acc) {
-            return acc.invoke(runtime, this, new Value(SplashString.instance, field))
+            return acc.invoke(runtime, this.type, this, new Value(SplashString.instance, field))
+        }
+        if (this.isPrimitive) {
+            return Value.null
         }
         return this.inner[field]
     }
@@ -258,33 +277,52 @@ export class Value {
     set(runtime: Runtime, field: string, value: Value) {
         let ass = this.getAssigner(value.type)
         if (ass) {
-            ass.invoke(runtime, this, new Value(SplashString.instance, field), value)
+            ass.invoke(runtime, this.type, this, new Value(SplashString.instance, field), value)
         }
-        this.inner[field] = value
+        if (!this.isPrimitive) {
+            this.inner[field] = value
+        }
     }
 
     invokeBinOperator(runtime: Runtime, op: BinaryOperator, other: Value): Value {
         let method = this.type.getBinaryOperation(op,other.type)
-        return method?.invoke(runtime, this, other) || Value.dummy
+        if (!method) {
+            console.log('did not find bin operator',this,op,other)
+        }
+        return method?.invoke(runtime, this.type, this, other) || Value.dummy
     }
 
     invokeUnaryOperator(runtime: Runtime, op: UnaryOperator): Value {
         let method = this.type.getUnaryOperation(op)
-        return method?.invoke(runtime, this) || Value.dummy
+        return method?.invoke(runtime, this.type, this) || Value.dummy
     }
 
-    toString(runtime: Runtime) {
-        if (this.type instanceof SplashPrimitive) {
+    toString(runtime: Runtime): string {
+        if (this.isPrimitive) {
+            if (this.isNull) {
+                return 'null'
+            }
             return this.inner.toString()
         }
-        console.log('invoking toString of',this.type,':',this.inner)
         return this.invokeMethod(runtime, 'toString').inner
     }
 
     toBoolean(runtime: Runtime): boolean {
-        if (this.type instanceof SplashPrimitive) {
+        if (this.isPrimitive) {
             return this.inner ? true : false
         }
         return this.invokeMethod(runtime, 'toBoolean').inner
+    }
+
+    get isNull() {
+        return this.type == DummySplashType.null || this.inner == null
+    }
+
+    get isVoid() {
+        return this.type == DummySplashType.void
+    }
+
+    get isPrimitive() {
+        return this.type instanceof SplashPrimitive || this.isNull || this.isVoid
     }
 }
