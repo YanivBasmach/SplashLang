@@ -510,10 +510,14 @@ export class ParameterNode extends ASTNode {
     generate(proc: Processor) {
         let type = proc.resolveType(this.type)
         let def: GeneratedExpression | undefined
-        if (this.defValue) {
+        if (type instanceof SplashOptionalType) {
+            def = new GenConstExpression(new Value(type,null))
+        } else if (this.defValue) {
             def = this.defValue.generate(proc)
         }
-        return new Parameter(this.name.value,type,def,this.vararg)
+        let p = new Parameter(this.name.value,type,def !== undefined,this.vararg)
+        p.defValue = def
+        return p
     }
 
 }
@@ -655,7 +659,7 @@ export class MethodNode extends ClassMember {
         let processedParams: Parameter[] = []
 
         for (let p of this.params) {
-            processedParams.push(new Parameter(p.name.value,proc.resolveType(p.type),undefined,p.vararg))
+            processedParams.push(new Parameter(p.name.value,proc.resolveType(p.type),p.defValue !== undefined,p.vararg))
         }
 
         if (proc.currentClass) {
@@ -787,7 +791,9 @@ export class ConstructorParamNode extends ASTNode {
         } else if (this.defValue) {
             def = this.defValue.generate(proc)
         }
-        return new CtorParameter(this.name.value,type,this.assignToField,def,this.vararg)
+        let p = new CtorParameter(this.name.value,type,this.assignToField,def !== undefined,this.vararg)
+        p.defValue = def
+        return p
     }
 }
 
@@ -803,7 +809,7 @@ export class ConstructorNode extends ClassMember {
 
         for (let p of this.params) {
             let type = p.type ? proc.resolveType(p.type) : proc.currentClass?.getField(p.name.value)?.type || SplashClass.object
-            processedParams.push(new CtorParameter(p.name.value,type,p.assignToField,undefined,p.vararg))
+            processedParams.push(new CtorParameter(p.name.value,type,p.assignToField,p.defValue !== undefined,p.vararg))
         }
 
         this.ctor = new Constructor(owner,processedParams,this.modifiers)

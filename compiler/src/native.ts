@@ -60,7 +60,7 @@ export class NativeFunctions {
 
     @NativeFunction('void',['object msg'])
     print(r: Runtime, msg: Value) {
-        console.warn(msg.toString(r))
+        console.log(">> " + msg.toString(r))
     }
 
     @NativeFunction('string',['string? query'])
@@ -68,7 +68,7 @@ export class NativeFunctions {
         if (msg.isNull) {
             return new Value(SplashString.instance, readline.prompt())
         }
-        return new Value(SplashString.instance, readline.question(msg.inner))
+        return new Value(SplashString.instance, readline.question(msg.inner + '\n'))
     }
 
     @NativeFunction('int')

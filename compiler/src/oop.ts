@@ -114,7 +114,8 @@ export class Method extends ClassExecutable {
 }
 
 export class Parameter {
-    constructor(public name: string, public type: SplashType, public defValue?: GeneratedExpression, public vararg?: boolean) {
+    defValue?: GeneratedExpression
+    constructor(public name: string, public type: SplashType, public hasDefValue?: boolean, public vararg?: boolean) {
 
     }
 
@@ -159,7 +160,7 @@ export class Parameter {
                         return false
                     }
                 }
-            } else if (!(p.type instanceof SplashOptionalType) && !p.defValue) {
+            } else if (!(p.type instanceof SplashOptionalType) && !p.hasDefValue) {
                 return false
             }
         }
@@ -176,8 +177,8 @@ export class Parameter {
 }
 
 export class CtorParameter extends Parameter {
-    constructor(name: string, type: SplashType, public assignToField: boolean, defValue?: GeneratedExpression, public vararg?: boolean) {
-        super(name,type,defValue,vararg)
+    constructor(name: string, type: SplashType, public assignToField: boolean, hasDefValue?: boolean, public vararg?: boolean) {
+        super(name,type,hasDefValue,vararg)
     }
 }
 

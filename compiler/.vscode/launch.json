@@ -12,6 +12,7 @@
             "preLaunchTask": "npm: build",
             "sourceMaps": true,
             "smartStep": true,
+            "outputCapture": "std",
             "internalConsoleOptions": "openOnSessionStart",
             "outFiles": [
                 "${workspaceFolder}/out/**/*.js"

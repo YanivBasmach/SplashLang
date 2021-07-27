@@ -27,11 +27,13 @@ export class GeneratedBlock extends GeneratedStatement {
     run(runtime: Runtime) {
         try {
             for (let s of this.statements) {
-                console.log("running statement " + s.constructor.name)
+                //console.log("running statement " + s.constructor.name)
                 s.run(runtime)
             }
         } catch (e) {
-            console.log('err:',e.message)
+            if (e.message != 'returned') {
+                console.log('Runtime Error:',e)
+            }
         }
     }
     
