@@ -6,7 +6,6 @@ import { BasicTypeToken, Constructor, Field, FunctionTypeToken, Member, Method, 
 import { BinaryOperator, Modifier, UnaryOperator } from "./operators"
 import { Parser } from "./parser"
 import { Processor } from "./processor"
-import { Runtime } from "./runtime"
 import { BaseTokenizer, TextRange, Token } from "./tokenizer"
 
 export abstract class SplashType {
@@ -50,8 +49,6 @@ export abstract class SplashType {
     }
 
     getBinaryOperation(op: BinaryOperator, right: SplashType): Method | undefined {
-        console.log('getting binop',op,'in',this.toString(),'with',right.toString())
-        console.log('methods:',this.methods)
         let name = Object.entries(BinaryOperator).find(e=>e[1] == op)?.[0] || ''
         let methods = this.getMethods(name)
         for (let m of methods) {
@@ -75,7 +72,7 @@ export abstract class SplashType {
         return this.methods.filter(m=>m.name == name)
     }
 
-    getMembers(name: string) {
+    getMembers(name: string, srcType?: SplashType) {
         return this.members.filter(m=>m.name == name)
     }
 
@@ -97,6 +94,9 @@ export abstract class SplashType {
     }
 
     canAssignTo(type: SplashType): boolean {
+        if (type instanceof SelfSplashType) {
+            return this.canAssignTo(type.base)
+        }
         if (type == SplashClass.object) return true
         if (this == type) return true
         if (type instanceof SplashOptionalType) {
@@ -266,6 +266,7 @@ export class SplashOptionalType extends SplashType {
     }
 
     canAssignTo(type: SplashType) {
+        if (type == SplashClass.object) return true
         return type instanceof SplashOptionalType && this.inner.canAssignTo(type.inner)
     }
 
@@ -273,6 +274,25 @@ export class SplashOptionalType extends SplashType {
         return new SplashOptionalType(type)
     }
     
+}
+
+export class SelfSplashType extends SplashType {
+
+    constructor(public base: SplashType) {
+        super('this')
+    }
+    
+    toString() {
+        return 'this'
+    }
+
+    canAssignTo(type: SplashType) {
+        return true
+    }
+
+    getMembers(name: string, srcType: SplashType) {
+        return srcType?.getMembers(name,srcType) || []
+    }
 }
 
 export class SplashClassType extends SplashClass {
@@ -288,41 +308,22 @@ export class SplashClassType extends SplashClass {
     }
 }
 
-export function resolveTypeBasic(token: TypeToken, types: SplashType[], paramGen?: (node: ParameterNode)=>Parameter, currentType?: SplashType): SplashType {
-    if (token.options.length == 1) {
-        let st = token.options[0]
-        return resolveTypeFromSingle(st,types,paramGen,currentType) || DummySplashType.null
+export class SplashBoolean extends SplashPrimitive {
+    static instance = new SplashBoolean('boolean')
+    get defaultValue(): Value {
+        return new Value(this,false)
     }
-    return new SplashComboType(token.options.map(t=>resolveTypeFromSingle(t,types,paramGen,currentType)))
+    
 }
 
-function resolveTypeFromSingle(token: SingleTypeToken, types: SplashType[], paramGen?: (node: ParameterNode)=>Parameter, currentType?: SplashType): SplashType {
-    if (token instanceof BasicTypeToken) {
-        let t = types.find(t=>t.name == token.base.value)
-        if (t) {
-            if (token.typeParams.length > 0) {
-                let hasInvalid = false
-                let params = token.typeParams.map(p=>{
-                    let rt = resolveTypeBasic(p,types,paramGen)
-                    if (!rt) hasInvalid = true
-                    return rt
-                })
-                if (hasInvalid) return DummySplashType.null
-                t = new SplashParameterizedType(t,params)
-            }
-            return token.optional ? SplashOptionalType.of(t) : t
-        } else if (token.base.value == 'this' && currentType) {
-            return currentType
-        }
-    } else if (token instanceof FunctionTypeToken) {
-        let f = new SplashFunctionType(token.params.map(p=>paramGen ? paramGen(p) : undefined).filter(p=>p !== undefined) as Parameter[],resolveTypeBasic(token.returnType,types,paramGen))
-        return token.optional ? SplashOptionalType.of(f) : f
-    }
-    return DummySplashType.null
-}
 
-export function resolveTypeFromString(str: string, types: SplashType[], currentType?: SplashType) {
-    let token = new Parser('unknown',new BaseTokenizer(str)).parseTypeToken(true)
-    if (!token) return
-    return resolveTypeBasic(token,types,(n)=>new Parameter(n.name.value,resolveTypeBasic(n.type,types,undefined)),currentType)
+export const BuiltinTypes: {[name: string]: SplashType} = {
+    string: SplashString.instance,
+    int: SplashInt.instance,
+    array: SplashArray.instance,
+    boolean: SplashBoolean.instance,
+    object: SplashClass.object,
+    class: SplashClassType.instance,
+    null: DummySplashType.null,
+    void: DummySplashType.void
 }

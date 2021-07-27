@@ -1,17 +1,21 @@
 
+import { compileFile, compileModule, initNatives } from './env'
 import { Runtime } from './runtime'
-import { compileFile, compileModule } from './env'
 
+initNatives()
 
 const sdk = compileModule('./sdk')
 
-console.log(JSON.stringify(sdk))
+console.log(sdk)
 const file = './test.splash'
 
-/* let compiled = compileFile(file,sdk)
+let compiled = compileFile(file,sdk)
+
+console.log(compiled)
 
 console.log('executing...')
 console.time('execution done')
 let rt = new Runtime()
+rt.includeModule(sdk)
 compiled.run(rt)
-console.timeEnd('execution done') */
+console.timeEnd('execution done')

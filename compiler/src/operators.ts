@@ -24,8 +24,8 @@ export enum BinaryOperator {
 }
 
 export enum UnaryOperator {
-    plus = '+',
-    minus = '-',
+    positive = '+',
+    negative = '-',
     not = '!',
     range = '..'
 }

@@ -2,10 +2,12 @@
 main {
     var name = "Yaniv"
 
-    var p = Person("Yaniv")
+    var p = Person("Yaniv",-2)
     p.sayHi()
 
     print("Person's name is {p.name}")
+
+    print("Is {p.name}'s age odd? {p.age.isOdd()}")
 }
 
 class Person {

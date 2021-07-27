@@ -1,12 +1,12 @@
 
 
-native function print(string msg)
+native function print(object msg)
 
-native function string readString(string? msg)
+native function string readLine(string? msg)
 
 native function int randomUID()
 
-class object {
+native class object {
 
     int uid = randomUID()
 
@@ -24,14 +24,12 @@ class object {
 
 }
 
-class string {
+native class string {
 
 }
 
-class int {
-    native operator boolean equals(int other)
-}
-
-class boolean {
+native class boolean {
     
+    native operator boolean not()
+
 }

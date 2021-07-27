@@ -1,21 +1,17 @@
 import { Method, Parameter, Value } from "./oop";
 import { Modifier } from "./operators";
 import { Runtime } from "./runtime";
-import { DummySplashType, resolveTypeFromString, SplashArray, SplashClass, SplashClassType, SplashInt, SplashString, SplashType } from "./types";
+import { BuiltinTypes, SplashClass, SplashInt, SplashString, SplashType } from "./types";
 import * as readline from 'readline-sync'
 import { ModifierList } from "./ast";
+import { Processor } from "./processor";
 
-
-export const builtinTypes = [
-    SplashString.instance,
-    SplashInt.instance,
-    SplashArray.instance,
-    SplashClass.object,
-    SplashClassType.instance,
-    DummySplashType.null,
-    DummySplashType.void
-]
-
+interface UnbakedNativeFunction {
+    name: string
+    retType: string
+    params?: string[]
+    run: (r: Runtime, ...params: Value[])=>Value
+}
 
 export interface NativeFunction {
     name: string
@@ -26,19 +22,19 @@ export interface NativeFunction {
 
 function NativeFunction(retType: string, params?: string[]) {
     return function(target: any, key: string, desc: PropertyDescriptor) {
-        nativeFunctions.push({
+        unbakedFunctions.push({
             name: key,
-            retType: resolveTypeFromString(retType,builtinTypes) || SplashClass.object,
-            params: params?.map(p=>Parameter.readFromString(p,builtinTypes)) || [],
+            retType,
+            params,
             run: desc.value
         })
     }
 }
-
+const unbakedFunctions: UnbakedNativeFunction[] = []
 export const nativeFunctions: NativeFunction[] = []
 
-export class NativeFunctions {
 
+export class NativeFunctions {
     
     static invoke(r: Runtime, name: string, params: Value[]) {
         for (let e of nativeFunctions) {
@@ -50,19 +46,45 @@ export class NativeFunctions {
         return Value.null
     }
 
+    static init(proc: Processor) {
+        for (let u of unbakedFunctions) {
+            nativeFunctions.push({
+                name: u.name,
+                retType: proc.resolveTypeFromString(u.retType) || SplashClass.object,
+                params: u.params?.map(p=>Parameter.readFromString(p,proc)) || [],
+                run: u.run
+            })
+        }
+        
+    }
+
     @NativeFunction('void',['object msg'])
-    static print(r: Runtime, msg: Value) {
+    print(r: Runtime, msg: Value) {
         console.warn(msg.toString(r))
     }
 
     @NativeFunction('string',['string? query'])
-    static inputLine(r: Runtime, msg: Value) {
+    readLine(r: Runtime, msg: Value) {
         if (msg.isNull) {
             return new Value(SplashString.instance, readline.prompt())
         }
         return new Value(SplashString.instance, readline.question(msg.inner))
     }
 
+    @NativeFunction('int')
+    randomUID(r: Runtime) {
+        return new Value(SplashInt.instance, Math.round(Math.random() * 100000))
+    }
+
+}
+
+interface UnbakedNativeMethod {
+    name: string
+    type: string
+    retType: string
+    params?: string[]
+    modifiers?: Modifier[]
+    run: (r: Runtime, thisArg?: Value, ...params: Value[])=>Value
 }
 
 export interface NativeMethod {
@@ -73,22 +95,22 @@ export interface NativeMethod {
     run: (r: Runtime, thisArg?: Value, ...params: Value[])=>Value
 }
 
-function NativeMethod(type: string, retType: string, params?: string[], modifiers?: Modifier[]) {
+function NativeMethod(retType: string, params?: string[], modifiers?: Modifier[]) {
     return function(target: any, key: string, desc: PropertyDescriptor) {
-        let inType = resolveTypeFromString(type,builtinTypes) || SplashClass.object
-        let ret = resolveTypeFromString(retType,builtinTypes,inType) || SplashClass.object
-        let par = params?.map(p=>Parameter.readFromString(p,builtinTypes,inType)) || []
-        inType.addMember(new Method(key,ret,par,new ModifierList(modifiers)))
-        nativeMethods.push({
-            name: key,
-            type: inType,
-            retType: ret,
-            params: par,
+        let type = key.substring(0,key.indexOf('_'))
+        let name = key.substring(key.indexOf('_') + 1)
+        unbakedMethods.push({
+            name,
+            type,
+            retType,
+            params,
+            modifiers,
             run: desc.value
         })
     }
 }
 
+const unbakedMethods: UnbakedNativeMethod[] = []
 const nativeMethods: NativeMethod[] = []
 
 export class NativeMethods {
@@ -110,14 +132,53 @@ export class NativeMethods {
         }
     }
 
-    @NativeMethod('object','self',['self def'],[Modifier.operator])
-    static default(r: Runtime, val: Value, other: Value) {
+    static init(proc: Processor) {
+        for (let u of unbakedMethods) {
+            let inType = proc.resolveTypeFromString(u.type) || SplashClass.object
+            proc.currentClass = inType
+            let ret = proc.resolveTypeFromString(u.retType) || SplashClass.object
+            let par = u.params?.map(p=>Parameter.readFromString(p,proc,inType)) || []
+            proc.currentClass = undefined
+            inType.addMember(new Method(u.name,ret,par,new ModifierList(u.modifiers)))
+            console.log('added native method ' + u.name + ' to',inType.toString())
+            nativeMethods.push({
+                name: u.name,
+                type: inType,
+                retType: ret,
+                params: par,
+                run: u.run
+            })
+        }
+    }
+
+    @NativeMethod('this',['this def'],[Modifier.operator])
+    object_default(r: Runtime, val: Value, other: Value) {
         return val.isNull ? other : val
     }
 
-    @NativeMethod('string','string')
-    static toLowerCase(r: Runtime, val: Value) {
+    @NativeMethod('string')
+    string_toLowerCase(r: Runtime, val: Value) {
         return new Value(SplashString.instance,val.inner.toLowerCase())
+    }
+
+    @NativeMethod('boolean',['int other'],[Modifier.operator])
+    int_equals(r: Runtime, val: Value, other: Value) {
+        return new Value(BuiltinTypes.boolean,val.inner == other.inner)
+    }
+
+    @NativeMethod('int',['int other'],[Modifier.operator])
+    int_mod(r: Runtime, val: Value, other: Value) {
+        return new Value(BuiltinTypes.int,val.inner % other.inner)
+    }
+
+    @NativeMethod('int',[],[Modifier.operator])
+    int_negative(r: Runtime, val: Value) {
+        return new Value(SplashInt.instance, -val.inner)
+    }
+
+    @NativeMethod('boolean',[],[Modifier.operator])
+    boolean_not(r: Runtime, val: Value) {
+        return new Value(BuiltinTypes.boolean,!val.inner)
     }
 
 }

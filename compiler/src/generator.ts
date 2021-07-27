@@ -8,7 +8,7 @@ import { TokenType } from "./tokenizer";
 
 
 export abstract class Generated {
-
+    
 }
 
 export abstract class GeneratedStatement extends Generated {
@@ -31,11 +31,7 @@ export class GeneratedBlock extends GeneratedStatement {
                 s.run(runtime)
             }
         } catch (e) {
-            if (e instanceof Returned) {
-                
-            } else {
-                console.log(e)
-            }
+            console.log('err:',e.message)
         }
     }
     
@@ -44,9 +40,9 @@ export class GeneratedBlock extends GeneratedStatement {
 
 export class SplashScript {
 
-    functions: GenFunction[] = []
+    functions: SplashFunction[] = []
     vars: GenVarDeclaration[] = []
-    classes: SplashClass[] = []
+    classes: SplashType[] = []
     main?: GeneratedBlock
 
     constructor(public name: string) {
@@ -54,6 +50,7 @@ export class SplashScript {
     }
 
     run(runtime: Runtime) {
+        runtime.include(this)
         if (this.main) {
             console.info("Executing script " + this.name)
             this.main.run(runtime)
@@ -74,18 +71,14 @@ export class GenVarDeclaration extends GeneratedStatement {
     
 }
 
-export class GenFunction extends GeneratedStatement {
+export class SplashFunction {
 
     constructor(public name: string, public retType: SplashType, public params: Parameter[], public body?: GeneratedBlock) {
-        super()
+
     }
 
     toFunctionType() {
         return new SplashFunctionType(this.params,this.retType)
-    }
-
-    run(runtime: Runtime): void {
-        
     }
 
     invoke(runtime: Runtime, ...params: Value[]): Value {

@@ -1,10 +1,10 @@
-import { GenArrayCreation, GenAssignableExpression, GenAssignment, GenCall, GenCallAccess, GenClassDecl, GenConstExpression, Generated, GeneratedBinary, GeneratedBlock, GeneratedExpression, GeneratedLiteral, GeneratedReturn, GeneratedStatement, GeneratedUnary, GenFieldAccess, GenFunction, GenIfStatement, GenStringLiteral, GenVarAccess, GenVarDeclaration, SplashScript } from "./generator";
+import { GenArrayCreation, GenAssignableExpression, GenAssignment, GenCall, GenCallAccess, GenClassDecl, GenConstExpression, Generated, GeneratedBinary, GeneratedBlock, GeneratedExpression, GeneratedLiteral, GeneratedReturn, GeneratedStatement, GeneratedUnary, GenFieldAccess, SplashFunction, GenIfStatement, GenStringLiteral, GenVarAccess, GenVarDeclaration, SplashScript } from "./generator";
 import { ExpressionSegment, StringToken, TextRange, Token, TokenType } from "./tokenizer";
 import { Parser } from "./parser";
 import { Constructor, CtorParameter, Field, Member, Method, Parameter, TypeToken, Value } from "./oop";
 import { Processor } from "./processor";
 import { AssignmentOperator, BinaryOperator, Modifier, UnaryOperator } from "./operators";
-import { DummySplashType, SplashArray, SplashClass, SplashClassType, SplashComboType, SplashFunctionType, SplashInt, SplashOptionalType, SplashParameterizedType, SplashString, SplashType } from "./types";
+import { BuiltinTypes, DummySplashType, SplashArray, SplashClass, SplashClassType, SplashComboType, SplashFunctionType, SplashInt, SplashOptionalType, SplashParameterizedType, SplashString, SplashType } from "./types";
 
 
 export abstract class ASTNode {
@@ -15,39 +15,43 @@ export abstract class ASTNode {
 
 export class RootNode extends ASTNode {
 
-    statements: Statement[] = []
+    classes: ClassDeclaration[] = []
+    main?: MainBlock
+    functions: FunctionNode[] = []
 
     constructor() {
         super("root")
     }
-    
-    index(proc: Processor) {
-        for (let s of this.statements) {
-            console.log('indexing ' + s.constructor.name)
-            s.index(proc)
+
+    add(node: ASTNode) {
+        if (node instanceof ClassDeclaration) {
+            this.classes.push(node)
+        } else if (node instanceof FunctionNode) {
+            this.functions.push(node)
+        } else if (node instanceof MainBlock) {
+            this.main = node
         }
     }
 
     process(proc: Processor) {
-        for (let s of this.statements) {
-            s.process(proc)
+        
+        for (let c of this.classes) {
+            c.process(proc)
+        }
+        for (let f of this.functions) {
+            f.process(proc)
+        }
+
+        if (this.main) {
+            this.main.process(proc)
         }
     }
 
-    generate(proc: Processor): SplashScript {
-        let script = new SplashScript(proc.file)
-        for (let s of this.statements) {
-            if (s instanceof VarDeclaration) {
-                script.vars.push(s.generate(proc))
-            } else if (s instanceof SimpleFunction) {
-                script.functions.push(s.generate(proc))
-            } else if (s instanceof MainBlock) {
-                script.main = s.generate(proc)
-            } else if (s instanceof ClassDeclaration) {
-                s.generate(proc)
-                script.classes.push(s.type)
-            }
-        }
+    generate(proc: Processor, file: string): SplashScript {
+        let script = new SplashScript(file)
+        script.main = this.main?.generate(proc)
+        script.classes.push(...this.classes.map(c=>c.generate(proc)))
+        script.functions.push(...this.functions.map(f=>f.generate(proc)))
         return script
     }
 }
@@ -55,10 +59,6 @@ export class RootNode extends ASTNode {
 export abstract class Statement extends ASTNode {
     constructor(id: string, public label: TextRange) {
         super(id)
-    }
-
-    index(proc: Processor) {
-
     }
 
     abstract process(proc: Processor): void
@@ -330,7 +330,7 @@ export class FieldAccess extends AssignableExpression {
 
     getResultType(proc: Processor): SplashType {
         let parentType = this.parent.getResultType(proc)
-        let m = parentType.getMembers(this.field.value)
+        let m = parentType.getMembers(this.field.value,proc.currentClass)
         if (m.length == 1) {
             return m[0].type
         }
@@ -362,7 +362,7 @@ export class VariableAccess extends AssignableExpression {
         } else if (func) {
             return func
         } else {
-            let cls = proc.types.find(t=>t.name == this.name.value)
+            let cls = proc.getTypeByName(this.name.value)
             if (cls) return SplashClassType.of(cls)
         }
         console.log('variable ' + this.name.value + ' not found in',proc)
@@ -518,14 +518,10 @@ export class ParameterNode extends ASTNode {
 
 }
 
-export class SimpleFunction extends Statement {
+export class FunctionNode extends ASTNode {
     
     constructor(public label: TextRange, public modifiers: ModifierList, public name: Token, public retType: TypeToken, public params: ParameterNode[], public code?: CodeBlock) {
-        super('function',label)
-    }
-
-    index(proc: Processor) {
-        proc.rawFunctions.push(this)
+        super('function')
     }
 
     process(proc: Processor) {
@@ -550,6 +546,8 @@ export class SimpleFunction extends Statement {
             }
             if (hasVararg) {
                 proc.error(p.name.range, "Vararg parameter must be the last parameter")
+            } else if (p.vararg) {
+                hasVararg = true
             }
         }
 
@@ -561,8 +559,8 @@ export class SimpleFunction extends Statement {
         
     }
 
-    generate(proc: Processor): GenFunction {
-        return new GenFunction(this.name.value,proc.resolveType(this.retType),this.params.map(p=>p.generate(proc)),this.code?.generate(proc))
+    generate(proc: Processor): SplashFunction {
+        return new SplashFunction(this.name.value,proc.resolveType(this.retType),this.params.map(p=>p.generate(proc)),this.code?.generate(proc))
     }
 
     toFunctionType(proc: Processor): SplashFunctionType {
@@ -596,11 +594,12 @@ export class ReturnStatement extends Statement {
 }
 
 export abstract class ClassMember extends ASTNode {
-    abstract index(proc: Processor): void
-    
+
+    abstract index(proc: Processor, type: SplashType): void
+
     abstract process(proc: Processor): void
 
-    abstract generate(proc: Processor, cls: SplashClass): void
+    abstract generate(proc: Processor, cls: SplashType): void
 }
 
 export class MethodNode extends ClassMember {
@@ -610,14 +609,7 @@ export class MethodNode extends ClassMember {
         super('method')
     }
 
-    index(proc: Processor) {
-        if (proc.currentClass) {
-            this.method = new Method(this.name.value, proc.resolveType(this.retType),this.params.map(p=>p.generate(proc)),this.modifiers)
-            proc.currentClass.addMember(this.method)
-        }
-    }
-
-    process(proc: Processor): void {
+    index(proc: Processor, type: SplashType) {
         if (this.modifiers.has(Modifier.native)) {
             if (this.body) {
                 proc.error(this.body.label, "Native methods may not have a body")
@@ -659,7 +651,25 @@ export class MethodNode extends ClassMember {
                 proc.error(this.modifiers.get(Modifier.set).range, "Setter methods should only take 1 parameter")
             }
         }
+        
+        let processedParams: Parameter[] = []
 
+        for (let p of this.params) {
+            processedParams.push(new Parameter(p.name.value,proc.resolveType(p.type),undefined,p.vararg))
+        }
+
+        if (proc.currentClass) {
+            this.method = new Method(this.name.value, proc.resolveType(this.retType), processedParams, this.modifiers)
+            let existing = proc.currentClass.getMethods(this.name.value)
+            if (existing.length == 0) {
+                proc.currentClass.addMember(this.method)
+                console.log('added method',this.name.value,'to',proc.currentClass.toString())
+            }
+            
+        }
+    }
+
+    process(proc: Processor): void {
         proc.validateType(this.retType)
         let uniqueNames: string[] = []
 
@@ -685,6 +695,8 @@ export class MethodNode extends ClassMember {
             }
             if (hasVararg) {
                 proc.error(p.name.range, "Vararg parameter must be the last parameter")
+            } else if (p.vararg) {
+                hasVararg = true
             }
         }
 
@@ -698,34 +710,35 @@ export class MethodNode extends ClassMember {
 
     generate(proc: Processor, cls: SplashClass): void {
         if (!this.method) throw 'Method node was not indexed!'
+        for (let i = 0; i < this.params.length; i++) {
+            this.method.params[i].defValue = this.params[i].defValue?.generate(proc)
+        }
         this.method.body = this.body?.generate(proc)
     }
     
 }
 
-export class ClassDeclaration extends Statement {
+export class ClassDeclaration extends ASTNode {
 
-    type: SplashClass
+    type: SplashType
 
-    constructor(public name: Token, public body: ClassMember[]) {
-        super('class_decl',name.range)
-        this.type = new SplashClass(name.value)
-    }
-
-    index(proc: Processor) {
-        if (proc.getTypeByName(this.name.value)) {
-            proc.error(this.name.range, "Duplicate type " + this.name.value)
+    constructor(public name: Token, public body: ClassMember[], public modifiers: ModifierList) {
+        super('class_decl')
+        if (modifiers.has(Modifier.native)) {
+            this.type = BuiltinTypes[this.name.value]
         } else {
-            console.log('indexing class ' + this.name.value)
-            proc.types.push(this.type)
+            this.type = new SplashClass(name.value)
         }
     }
 
     process(proc: Processor): void {
+        if (!this.modifiers.has(Modifier.native)) {
+            proc.types.push(this.type)
+        }
         proc.currentClass = this.type
 
         for (let m of this.body) {
-            m.index(proc)
+            m.index(proc, this.type)
         }
         
         for (let m of this.body) {
@@ -733,12 +746,13 @@ export class ClassDeclaration extends Statement {
         }
         proc.currentClass = undefined
     }
-    generate(proc: Processor): GeneratedStatement {
+    generate(proc: Processor): SplashType {
         proc.currentClass = this.type
         for (let m of this.body) {
             m.generate(proc,this.type)
         }
-        return new GenClassDecl(this.type)
+        proc.currentClass = undefined
+        return this.type
     }
     
 }
@@ -784,28 +798,40 @@ export class ConstructorNode extends ClassMember {
         super('constructor')
     }
 
-    index(proc: Processor): void {
-        if (proc.currentClass) {
-            this.ctor = new Constructor(proc.currentClass,this.params.map(p=>p.generate(proc)),this.modifiers)
-            proc.currentClass.addMember(this.ctor)
+    index(proc: Processor, owner: SplashType) {
+        let processedParams: CtorParameter[] = []
+
+        for (let p of this.params) {
+            let type = p.type ? proc.resolveType(p.type) : proc.currentClass?.getField(p.name.value)?.type || SplashClass.object
+            processedParams.push(new CtorParameter(p.name.value,type,p.assignToField,undefined,p.vararg))
         }
+
+        this.ctor = new Constructor(owner,processedParams,this.modifiers)
+        owner.addMember(this.ctor)
     }
+
     process(proc: Processor): void {
+        
         let uniqueNames: string[] = []
         let hasVararg = false
         proc.push()
         proc.inInstanceContext = true
+        
         for (let p of this.params) {
             p.process(proc)
+            let type = p.type ? proc.resolveType(p.type) : proc.currentClass?.getField(p.name.value)?.type || SplashClass.object
             if (uniqueNames.includes(p.name.value)) {
                 proc.error(p.name.range, "Duplicate parameter '" + p.name.value + "'")
             } else {
                 uniqueNames.push(p.name.value)
-                proc.addVariable(p.name, p.type ? proc.resolveType(p.type) : proc.currentClass?.getField(p.name.value)?.type || SplashClass.object)
+                proc.addVariable(p.name, type)
             }
             if (hasVararg) {
                 proc.error(p.name.range, "Vararg parameter must be the last parameter")
+            } else if (p.vararg) {
+                hasVararg = true
             }
+            
         }
 
         if (this.body) {
@@ -817,6 +843,9 @@ export class ConstructorNode extends ClassMember {
     }
     generate(proc: Processor, cls: SplashClass): void {
         if (!this.ctor) throw 'Constructor node was not indexed!'
+        for (let i = 0; i < this.params.length; i++) {
+            this.ctor.params[i].defValue = this.params[i].defValue?.generate(proc)
+        }
         this.ctor.body = this.body?.generate(proc)
     }
 
@@ -829,12 +858,11 @@ export class FieldNode extends ClassMember {
         super('field')
     }
 
-    index(proc: Processor): void {
-        if (proc.currentClass) {
-            this.field = new Field(this.name.value,this.modifiers,proc.resolveType(this.type))
-            proc.currentClass.addMember(this.field)
-        }
+    index(proc: Processor, owner: SplashType) {
+        this.field = new Field(this.name.value,this.modifiers,proc.resolveType(this.type))
+        owner.addMember(this.field)
     }
+    
     process(proc: Processor): void {
         proc.validateType(this.type)
         if (this.defValue) {

@@ -85,7 +85,7 @@ export abstract class ClassExecutable implements Member {
 export class Method extends ClassExecutable {
     
     body?: GeneratedBlock
-    type: SplashType
+    type: SplashFunctionType
 
     constructor(public name: string, public retType: SplashType, params: Parameter[], modifiers: ModifierList) {
         super(params,modifiers)
@@ -136,6 +136,8 @@ export class Parameter {
                 runtime.setVariable(p.name, new Value(p.type, vals))
             } else if (i < values.length) {
                 runtime.setVariable(p.name, values[i])
+            } else if (p.type instanceof SplashOptionalType) {
+                runtime.setVariable(p.name, new Value(p.type, null))
             } else {
                 let val = p.defValue?.evaluate(runtime) || Value.null
                 runtime.setVariable(p.name, val)
@@ -164,13 +166,11 @@ export class Parameter {
         return true;
     }
 
-    static readFromString(str: string, types: SplashType[], inType?: SplashType) {
+    static readFromString(str: string, proc: Processor, inType?: SplashType) {
         let parser = new Parser('unknown',new BaseTokenizer(str))
         let p = parser.parseParameter()
         if (!p) throw 'Cannot create parameter from ' + str
-        let proc = new Processor(new RootNode(),'unknown');
-        proc.types.push(...types)
-        proc.currentClass = inType instanceof SplashClass ? inType : undefined
+        p.process(proc)
         return p.generate(proc)
     }
 }

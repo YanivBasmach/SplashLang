@@ -1,4 +1,5 @@
-import { GenFunction, SplashScript } from "./generator";
+import { SplashModule } from "./env";
+import { SplashFunction, SplashScript } from "./generator";
 import { nativeFunctions, NativeFunctions } from "./native";
 import { Field, Parameter, Value } from "./oop";
 import { Modifier } from "./operators";
@@ -12,13 +13,24 @@ export class Runtime {
     
     variables: {[name: string]: Value} = {}
     types: SplashType[] = []
-    functions: GenFunction[] = []
+    functions: SplashFunction[] = []
 
     copy() {
         let r = new Runtime()
         r.types = [...this.types]
         r.functions = [...this.functions]
         return r
+    }
+
+    include(script: SplashScript) {
+        this.types.push(...script.classes)
+        this.functions.push(...script.functions)
+    }
+
+    includeModule(module: SplashModule) {
+        for (let s of module.scripts) {
+            this.include(s)
+        }
     }
 
     declareVariable(name: string, value?: Value) {
@@ -60,7 +72,7 @@ export class Runtime {
     getVariable(name: string): Value {
         if (this.variables[name]) return this.variables[name]
         if (this.currentType) {
-            for (let m of this.currentType.getMembers(name)) {
+            for (let m of this.currentType.getMembers(name,)) {
                 if (m instanceof Field && m.modifiers.has(Modifier.static)) {
                     return this.currentType.staticFields[m.name]
                 }
@@ -96,5 +108,7 @@ export class Runtime {
 
 
 export class Returned extends Error {
-
+    constructor() {
+        super('returned')
+    }
 }

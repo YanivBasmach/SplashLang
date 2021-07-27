@@ -1,8 +1,7 @@
-import { ElseStatement, NullExpression, ArrayExpression, AssignableExpression, Assignment, BinaryExpression, CallAccess, CallStatement, CodeBlock, Expression, FieldAccess, IfStatement, InvalidExpression, LiteralExpression, MainBlock, RootNode, Statement, UnaryExpression, VarDeclaration, VariableAccess, ModifierList, ParameterNode, SimpleFunction, ReturnStatement, ExpressionList, StringExpression, ClassDeclaration, ClassMember, MethodNode, FieldNode, ConstructorParamNode, ConstructorNode, ThisAccess, ASTNode } from "./ast";
+import { ElseStatement, NullExpression, ArrayExpression, AssignableExpression, Assignment, BinaryExpression, CallAccess, CallStatement, CodeBlock, Expression, FieldAccess, IfStatement, InvalidExpression, LiteralExpression, MainBlock, RootNode, Statement, UnaryExpression, VarDeclaration, VariableAccess, ModifierList, ParameterNode, FunctionNode, ReturnStatement, ExpressionList, StringExpression, ClassDeclaration, ClassMember, MethodNode, FieldNode, ConstructorParamNode, ConstructorNode, ThisAccess, ASTNode } from "./ast";
 import { BasicTypeToken, FunctionTypeToken, SingleTypeToken, TypeToken } from "./oop";
 import { AssignmentOperator, BinaryOperator, Modifier } from "./operators";
 import { DelegateTokenizer, ExpressionSegment, LiteralSegment, Position, StringToken, TextRange, Token, Tokenizer, TokenType } from "./tokenizer";
-import { DummySplashType, SplashType } from "./types";
 
 export class Parser {
 
@@ -23,6 +22,10 @@ export class Parser {
         this.hasErrors = true
     }
 
+    /**
+     * Returns the next token from the tokenizer
+     * @param skipComments true by default. False to not skip any comments in code
+     */
     next(skipComments = true): Token {
         if (this.lookforward.length > 0) {
             let n = this.lookforward.shift();
@@ -74,6 +77,11 @@ export class Parser {
         return false
     }
 
+    /**
+     * Checks if the next token's value matches any of the given values.
+     * Returns true if it is
+     * @param val The value or values to test
+     */
     isValueNext(...val: string[]) {
         let peeked = this.peek().value
         for (let v of val) {
@@ -82,6 +90,11 @@ export class Parser {
         return false
     }
     
+    /**
+     * Skips the next token if it's value matches the given value
+     * @param val The token value to skip
+     * @returns True if we skipped, and false if we didn't
+     */
     skipValue(val: string) {
         if (this.isValueNext(val)) {
             this.next()
@@ -90,6 +103,11 @@ export class Parser {
         return false
     }
 
+    /**
+     * Skips and returns the next token if it's of the given type.
+     * If it doesn't, raise an error
+     * @param type The token type we expect
+     */
     expect(type: TokenType): Token | undefined {
         if (this.isNext(type)) {
             return this.next();
@@ -98,6 +116,11 @@ export class Parser {
         return undefined
     }
 
+    /**
+     * Skips and returns the next token if it's value matches the given value.
+     * If it doesn't, raise an error
+     * @param val The value we expect
+     */
     expectValue(val: string): Token | undefined {
         if (this.isValueNext(val)) {
             return this.next();
@@ -106,6 +129,12 @@ export class Parser {
         return undefined
     }
 
+    /**
+     * Skips and returns the next token if it matches any of the given values.
+     * If it doesn't, raise an error
+     * @param name A common label for what we're looking for
+     * @param values The expected values
+     */
     expectOneOf(name: string, ...values: string[]): Token {
         for (let v of values) {
             if (this.isValueNext(v)) return this.next()
@@ -114,12 +143,18 @@ export class Parser {
         return Token.invalid(this.peek().range)
     }
 
+    /**
+     * Skips any new line tokens until a different token is found or reached the end.
+     */
     skipEmptyLines() {
         while (this.hasNext() && this.isNext(TokenType.line_end)) {
             this.next()
         }
     }
 
+    /**
+     * Parses an entire splash file and creates an AST (Abstract Syntax Tree)
+     */
     parseFile(): RootNode {
         let root = new RootNode()
 
@@ -129,7 +164,7 @@ export class Parser {
             } else {
                 let s = this.parseTopLevel(new ModifierList())
                 if (s) {
-                    root.statements.push(s)
+                    root.add(s)
                     if (this.hasNext()) {
                         this.expect(TokenType.line_end)
                     }
@@ -144,7 +179,7 @@ export class Parser {
         return root
     }
 
-    parseTopLevel(modifiers: ModifierList): Statement | undefined {
+    parseTopLevel(modifiers: ModifierList): ASTNode | undefined {
         if (this.isNext(TokenType.keyword)) {
             let kw = this.peek()
             switch (kw.value) {
@@ -235,7 +270,8 @@ export class Parser {
     parseClassMember(modifiers: ModifierList): ClassMember | undefined {
         let t = this.peek()
         if (t.type == TokenType.keyword) {
-            if (t.value in Modifier) {
+            let keys = Object.keys(Modifier)
+            if (keys.includes(t.value)) {
                 modifiers.add(this, t)
                 this.next()
                 return this.parseClassMember(modifiers)
@@ -342,7 +378,7 @@ export class Parser {
         }
     }
 
-    parseFunction(modifiers: ModifierList): Statement | undefined {
+    parseFunction(modifiers: ModifierList): FunctionNode | undefined {
         modifiers.assertHasOnly(this,Modifier.private,Modifier.native)
         let label = this.next()
         let retType: TypeToken = TypeToken.void
@@ -354,19 +390,19 @@ export class Parser {
         if (name && this.isValueNext('(')) {
             let params = this.parseParameterList()
             let code = this.parseBlock()
-            return new SimpleFunction(label.range, modifiers, name, retType, params, code)
+            return new FunctionNode(label.range, modifiers, name, retType, params, code)
         }
     }
 
     parseClass(modifiers: ModifierList): ClassDeclaration | undefined {
         this.next()
-        modifiers.assertHasOnly(this,Modifier.private,Modifier.abstract,Modifier.final)
+        modifiers.assertHasOnly(this,Modifier.private,Modifier.abstract,Modifier.final,Modifier.native)
         modifiers.checkIncompatible(this,Modifier.abstract,Modifier.final)
         let name = this.expect(TokenType.identifier)
         if (name) {
             // todo: add extends
             let body = this.parseClassBody()
-            return new ClassDeclaration(name,body)
+            return new ClassDeclaration(name,body,modifiers)
         }
     }
     

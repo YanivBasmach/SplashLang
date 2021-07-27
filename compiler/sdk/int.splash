@@ -1,0 +1,22 @@
+
+native class int {
+
+    native operator boolean equals(int other)
+
+    boolean isOdd() {
+        return this % 2 != 0
+    }
+
+    operator boolean ne(int other) {
+        return !equals(other)
+    }
+
+    native operator int mod(int other)
+
+    boolean isPrime() {
+
+    }
+
+    native operator int negative()
+    
+}
