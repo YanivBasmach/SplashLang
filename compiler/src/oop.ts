@@ -3,7 +3,7 @@ import { GeneratedBlock, GeneratedExpression, SplashScript } from "./generator";
 import { BinaryOperator, Modifier, UnaryOperator } from "./operators";
 import { Runtime } from "./runtime";
 import { BaseTokenizer, TextRange, Token } from "./tokenizer";
-import { DummySplashType, SplashClass, SplashFunctionType, SplashOptionalType, SplashParameterizedType, SplashPrimitive, SplashString, SplashType } from "./types";
+import { DummySplashType, SplashClass, SplashClassType, SplashFunctionType, SplashOptionalType, SplashParameterizedType, SplashPrimitive, SplashString, SplashType } from "./types";
 import { NativeFunctions, NativeMethods } from "./native";
 import { Parser } from "./parser";
 import { Processor } from "./processor";
@@ -68,6 +68,7 @@ export class TypeToken {
 export interface Member {
     name: string
     type: SplashType
+    isStatic: boolean
 }
 
 export abstract class ClassExecutable implements Member {
@@ -77,6 +78,7 @@ export abstract class ClassExecutable implements Member {
     }
     abstract name: string;
     abstract type: SplashType;
+    abstract get isStatic(): boolean
 
     abstract invoke(runtime: Runtime, inType: SplashType, thisArg?: Value, ...params: Value[]): Value
 
@@ -89,7 +91,7 @@ export class Method extends ClassExecutable {
 
     constructor(public name: string, public retType: SplashType, params: Parameter[], modifiers: ModifierList) {
         super(params,modifiers)
-        this.type = new SplashFunctionType(this.params,this.retType)
+        this.type = new SplashFunctionType(this.retType, this.params)
     }
 
     invoke(runtime: Runtime, inType: SplashType, thisArg?: Value, ...params: Value[]): Value {
@@ -109,6 +111,10 @@ export class Method extends ClassExecutable {
             return NativeMethods.invoke(r, inType, this.name, params, thisArg)
         }
         
+    }
+
+    get isStatic() {
+        return this.modifiers.has(Modifier.static)
     }
 
 }
@@ -146,25 +152,26 @@ export class Parameter {
         }
     }
 
-    static allParamsMatch(params: Parameter[], types: SplashType[]) {
+    static allParamsMatch(params: Parameter[], types: SplashType[]): boolean {
+        let matchCount = 0;
         for (let i = 0; i < params.length; i++) {
             let p = params[i]
             if (i < types.length) {
                 if (p.vararg) {
                     let rest = types.slice(i)
-                    if (!rest.every(r=>r.canAssignTo((p.type as SplashParameterizedType).params[0]))) {
-                        return false
-                    }
+                    return rest.every(r=>r.canAssignTo((p.type as SplashParameterizedType).params[0]))
                 } else {
                     if (!types[i].canAssignTo(p.type)) {
                         return false
                     }
                 }
+                matchCount++
             } else if (!(p.type instanceof SplashOptionalType) && !p.hasDefValue) {
                 return false
             }
+            
         }
-        return true;
+        return matchCount == types.length;
     }
 
     static readFromString(str: string, proc: Processor, inType?: SplashType) {
@@ -189,7 +196,7 @@ export class Constructor extends ClassExecutable {
     name: string = 'constructor'
     constructor(type: SplashType, params: CtorParameter[], modifiers: ModifierList) {
         super(params,modifiers)
-        this.type = new SplashFunctionType(this.params,type)
+        this.type = new SplashFunctionType(type, this.params)
     }
 
     invoke(runtime: Runtime, inType: SplashType, thisArg?: Value, ...params: Value[]): Value {
@@ -202,15 +209,19 @@ export class Constructor extends ClassExecutable {
         }
         
         Parameter.initParams(r, this.params, params)
-        for (let i = 0; i < params.length; i++) {
-            let v = params[i]
-            let cp = Parameter.getParamAt(i,this.params)
+        for (let i = 0; i < this.params.length; i++) {
+            let cp = this.params[i]
+            let v = r.getVariable(cp.name)
             if (cp instanceof CtorParameter && cp.assignToField) {
                 val.set(r,cp.name,v)
             }
         }
         this.body?.run(r)
         return val
+    }
+
+    get isStatic() {
+        return true
     }
 
 }
@@ -222,6 +233,10 @@ export class Field implements Member {
 
     defaultValue(runtime: Runtime): Value {
         return this.init ? this.init.evaluate(runtime) : this.type.defaultValue
+    }
+
+    get isStatic() {
+        return this.modifiers.has(Modifier.static)
     }
 }
 
@@ -236,7 +251,7 @@ export class Value {
     }
 
     invokeMethod(runtime: Runtime, name: string, ...params: Value[]): Value {
-        let method = this.type.getValidMethod(name,...params)
+        let method = this.type.getValidMethod(name,...params.map(p=>p.type))
         if (!method) {
             console.log('could not find method',name,params,'in',this)
         }
@@ -272,6 +287,7 @@ export class Value {
         if (this.isPrimitive) {
             return Value.null
         }
+        
         return this.inner[field]
     }
 

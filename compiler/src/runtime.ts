@@ -1,9 +1,10 @@
+import prompt from "prompt-sync";
 import { SplashModule } from "./env";
 import { SplashFunction, SplashScript } from "./generator";
 import { nativeFunctions, NativeFunctions } from "./native";
 import { Field, Parameter, Value } from "./oop";
 import { Modifier } from "./operators";
-import { SplashClass, SplashType } from "./types";
+import { SplashClass, SplashClassType, SplashType } from "./types";
 
 export class Runtime {
 
@@ -14,6 +15,12 @@ export class Runtime {
     variables: {[name: string]: Value} = {}
     types: SplashType[] = []
     functions: SplashFunction[] = []
+
+    prompt: prompt.Prompt
+
+    constructor() {
+        this.prompt = prompt()
+    }
 
     copy() {
         let r = new Runtime()
@@ -43,7 +50,7 @@ export class Runtime {
 
     invokeFunction(name: string, ...params: Value[]): Value {
         if (this.currentType) {
-            let m = this.currentType.getValidMethod(name,...params);
+            let m = this.currentType.getValidMethod(name,...params.map(p=>p.type));
             if (m) {
                 return m.invoke(this,this.currentType,this.currentInstance,...params)
             }
@@ -86,6 +93,10 @@ export class Runtime {
             if (f) {
                 return f
             }
+        }
+        let type = this.types.find(t=>t.name == name)
+        if (type) {
+            return new Value(SplashClassType.of(type),type.staticFields)
         }
         return Value.null
     }

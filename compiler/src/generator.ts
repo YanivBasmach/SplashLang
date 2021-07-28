@@ -80,7 +80,7 @@ export class SplashFunction {
     }
 
     toFunctionType() {
-        return new SplashFunctionType(this.params,this.retType)
+        return new SplashFunctionType(this.retType, this.params)
     }
 
     invoke(runtime: Runtime, ...params: Value[]): Value {

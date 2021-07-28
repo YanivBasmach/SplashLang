@@ -383,21 +383,31 @@ export class CallAccess extends Expression {
     getResultType(proc: Processor): SplashType {
         let res = this.parent.getResultType(proc)
         if (res instanceof SplashFunctionType) {
-            if (!this.params.canApplyTo(proc,res.params)) {
-                proc.error(this.range,"Mismatched parameter types") // todo: improve this error message
+            if (this.params.canApplyTo(proc,res.params)) {
+                return res.retType
             }
-            return res.retType
-        } else if (res instanceof SplashComboType && res.types[1] instanceof SplashFunctionType) {
-            if (!this.params.canApplyTo(proc,res.types[1].params)) {
-                proc.error(this.range,"Mismatched parameter types") // todo: improve this error message
+            proc.error(this.range,"Mismatched parameter types") // todo: improve this error message
+            return SplashClass.object
+        } else if (res instanceof SplashComboType) {
+            let hadFunc = false
+            for (let option of res.types) {
+                if (option instanceof SplashFunctionType) {
+                    if (this.params.canApplyTo(proc,option.params)) {
+                        return option.retType
+                    }
+                    hadFunc = true
+                }
             }
-            return res.types[1].retType
+            if (hadFunc) {
+                proc.error(this.range,"Mismatched parameter types") // todo: improve this error message
+                return SplashClass.object
+            }
         }
-        if (res instanceof SplashParameterizedType && res.base instanceof SplashClassType) {
-            if (!(res.params[0] as SplashClass).constructors.find(c=>this.params.canApplyTo(proc,c.params))) {
-                proc.error(this.range,"No constructor of " + res.params[0] + " found taking these parameters")
+        if (res instanceof SplashClassType) {
+            if (!res.constructors.find(c=>this.params.canApplyTo(proc,c.params))) {
+                proc.error(this.range,"No constructor of " + res + " found taking these parameters")
             }
-            return res.params[0]
+            return res.type
         }
         let invoker = res.getInvoker(proc,this.params);
         if (invoker) {
@@ -568,7 +578,7 @@ export class FunctionNode extends ASTNode {
     }
 
     toFunctionType(proc: Processor): SplashFunctionType {
-        return new SplashFunctionType(this.params.map(p=>p.generate(proc)),proc.resolveType(this.retType))
+        return new SplashFunctionType(proc.resolveType(this.retType), this.params.map(p=>p.generate(proc)))
     }
 
 }
@@ -664,8 +674,12 @@ export class MethodNode extends ClassMember {
 
         if (proc.currentClass) {
             this.method = new Method(this.name.value, proc.resolveType(this.retType), processedParams, this.modifiers)
-            let existing = proc.currentClass.getMethods(this.name.value)
-            if (existing.length == 0) {
+            let existing = proc.currentClass.declaredMethods.find(m=>m.name == this.name.value && Parameter.allParamsMatch(m.params,processedParams.map(p=>p.type)))
+            if (existing) {
+                if (!this.modifiers.has(Modifier.native)) {
+                    proc.error(this.name.range, "Duplicate method '" + this.name.value + "'")
+                }
+            } else {
                 proc.currentClass.addMember(this.method)
                 console.log('added method',this.name.value,'to',proc.currentClass.toString())
             }

@@ -1,10 +1,10 @@
 import { Method, Parameter, Value } from "./oop";
 import { Modifier } from "./operators";
 import { Runtime } from "./runtime";
-import { BuiltinTypes, SplashClass, SplashInt, SplashString, SplashType } from "./types";
-import * as readline from 'readline-sync'
+import { BuiltinTypes, SplashClass, SplashClassType, SplashInt, SplashString, SplashType } from "./types";
 import { ModifierList } from "./ast";
 import { Processor } from "./processor";
+import prompt from 'prompt-sync'
 
 interface UnbakedNativeFunction {
     name: string
@@ -65,10 +65,13 @@ export class NativeFunctions {
 
     @NativeFunction('string',['string? query'])
     readLine(r: Runtime, msg: Value) {
+        let res;
         if (msg.isNull) {
-            return new Value(SplashString.instance, readline.prompt())
+            res = r.prompt({})
+        } else {
+            res = r.prompt(msg.inner as string)
         }
-        return new Value(SplashString.instance, readline.question(msg.inner + '\n'))
+        return new Value(SplashString.instance, res)
     }
 
     @NativeFunction('int')
@@ -116,6 +119,9 @@ const nativeMethods: NativeMethod[] = []
 export class NativeMethods {
 
     static invoke(r: Runtime, type: SplashType, name: string, params: Value[], thisArg?: Value) {
+        if (type instanceof SplashClassType) {
+            type = type.type
+        }
         let e = NativeMethods.findMethod(type,name,params.map(p=>p.type))
         if (e) {
             return e.run(r,thisArg,...params)
@@ -174,6 +180,11 @@ export class NativeMethods {
     @NativeMethod('int',[],[Modifier.operator])
     int_negative(r: Runtime, val: Value) {
         return new Value(SplashInt.instance, -val.inner)
+    }
+
+    @NativeMethod('int',['string value'],[Modifier.static])
+    int_parse(r: Runtime, _: Value, str: Value) {
+        return new Value(SplashInt.instance, parseInt(str.inner))
     }
 
     @NativeMethod('boolean',[],[Modifier.operator])

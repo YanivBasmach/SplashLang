@@ -1,15 +1,16 @@
 
 main {
-    var name = readLine("What is your name?")
+    var name = readLine("What is your name? ")
+    var age = int.parse(readLine("And your age? "))
 
-
-    var p = Person(name)
+    var p = Person(name, age)
 
     print("Hello {p.name}! This is Splash.")
     p.sayHi()
+    p.sayHi("Someone")
     
 
-    print("Is {p.name}'s age odd? {p.age.isOdd()}")
+    print("Is {p}'s age odd? {p.age.isOdd()}")
 
 }
 
@@ -17,11 +18,17 @@ class Person {
     string name
     int age
 
-    constructor(this.name, this.age = 10) {
-        
-    }
+    constructor(this.name, this.age = 10)
 
     sayHi() {
         print("{name} says hi, he's {age} years old")
+    }
+
+    sayHi(string to) {
+        print("{name} says hi to {to}")
+    }
+
+    toString() {
+        return "Person({name})"
     }
 }

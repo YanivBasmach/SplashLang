@@ -12,6 +12,7 @@ export abstract class SplashType {
 
     protected _members: Member[] = []
     staticFields: {[name: string]: Value} = {}
+    declaredMethods: Method[] = []
 
     constructor(public name: string) {
 
@@ -42,10 +43,9 @@ export abstract class SplashType {
             this._members = []
         }
         this._members.push(m)
-    }
-
-    toToken() {
-        return new TypeToken([new BasicTypeToken(TextRange.end,Token.dummy(this.name),[],false)])
+        if (m instanceof Method) {
+            this.declaredMethods.push(m)
+        }
     }
 
     getBinaryOperation(op: BinaryOperator, right: SplashType): Method | undefined {
@@ -88,9 +88,9 @@ export abstract class SplashType {
         }
     }
 
-    getValidMethod(name: string, ...params: Value[]) {
+    getValidMethod(name: string, ...params: SplashType[]) {
         return this.getMethods(name)
-            .filter(m=>Parameter.allParamsMatch(m.params,params.map(p=>p.type)))[0]
+            .filter(m=>Parameter.allParamsMatch(m.params,params))[0]
     }
 
     canAssignTo(type: SplashType): boolean {
@@ -113,9 +113,14 @@ export abstract class SplashType {
     }
 }
 
+export interface FunctionSignature {
+    retType: SplashType
+    params: Parameter[]
+}
+
 export class SplashFunctionType extends SplashType {
 
-    constructor(public params: Parameter[], public retType: SplashType) {
+    constructor(public retType: SplashType, public params: Parameter[]) {
         super('function')
     }
 
@@ -123,12 +128,8 @@ export class SplashFunctionType extends SplashType {
         return []
     }
 
-    toToken() {
-        return new TypeToken([new FunctionTypeToken(TextRange.end, this.params.map(p=>new ParameterNode(Token.dummy(p.name),p.type.toToken())),this.retType.toToken(),false)])
-    }
-
     toString() {
-        return 'function(' + this.params.map(p=>p.type.toString() + ' ' + p.name).join(',') + '): ' + this.retType.toString() 
+        return 'function(' + this.params.map(p=>p.type.toString() + ' ' + p.name).join(',') + '): ' + this.retType.toString()
     }
     
 }
@@ -192,7 +193,7 @@ export class SplashClass extends SplashType {
     }
 
     get constructors(): Constructor[] {
-        return this._members.filter(m=>m instanceof Constructor).map(m=>m as Constructor)
+        return this.members.filter(m=>m instanceof Constructor).map(m=>m as Constructor)
     }
 
     getValidCtor(params: Value[]) {
@@ -297,14 +298,16 @@ export class SelfSplashType extends SplashType {
 
 export class SplashClassType extends SplashClass {
 
-    static instance = new SplashClassType()
-
-    constructor() {
-        super('Class')
+    constructor(public type: SplashType) {
+        super(type.toString())
     }
 
     static of(type: SplashType) {
-        return new SplashParameterizedType(SplashClassType.instance,[type])
+        return new SplashClassType(type)
+    }
+
+    get members() {
+        return this.type.members.filter(m=>m.isStatic)
     }
 }
 
@@ -323,7 +326,6 @@ export const BuiltinTypes: {[name: string]: SplashType} = {
     array: SplashArray.instance,
     boolean: SplashBoolean.instance,
     object: SplashClass.object,
-    class: SplashClassType.instance,
     null: DummySplashType.null,
     void: DummySplashType.void
 }

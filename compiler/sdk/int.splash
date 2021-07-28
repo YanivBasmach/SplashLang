@@ -1,6 +1,8 @@
 
 native class int {
 
+    native static int parse(string value)
+
     native operator boolean equals(int other)
 
     boolean isOdd() {
@@ -18,5 +20,6 @@ native class int {
     }
 
     native operator int negative()
+    
     
 }

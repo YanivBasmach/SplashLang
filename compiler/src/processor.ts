@@ -120,7 +120,7 @@ export class Processor {
                 return new SelfSplashType(this.currentClass)
             }
         } else if (token instanceof FunctionTypeToken) {
-            let f = new SplashFunctionType(token.params.map(p=>p.generate(this)), this.resolveType(token.returnType))
+            let f = new SplashFunctionType(this.resolveType(token.returnType), token.params.map(p=>p.generate(this)))
             return token.optional ? SplashOptionalType.of(f) : f
         }
         return DummySplashType.null
