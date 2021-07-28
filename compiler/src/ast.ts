@@ -1,4 +1,4 @@
-import { GenArrayCreation, GenAssignableExpression, GenAssignment, GenCall, GenCallAccess, GenClassDecl, GenConstExpression, Generated, GeneratedBinary, GeneratedBlock, GeneratedExpression, GeneratedLiteral, GeneratedReturn, GeneratedStatement, GeneratedUnary, GenFieldAccess, SplashFunction, GenIfStatement, GenStringLiteral, GenVarAccess, GenVarDeclaration, SplashScript } from "./generator";
+import { GenArrayCreation, GenAssignableExpression, GenAssignment, GenCall, GenCallAccess, GenClassDecl, GenConstExpression, Generated, GeneratedBinary, GeneratedBlock, GeneratedExpression, GeneratedLiteral, GeneratedReturn, GeneratedStatement, GeneratedUnary, GenFieldAccess, SplashFunction, GenIfStatement, GenStringLiteral, GenVarAccess, GenVarDeclaration, SplashScript, GenIndexAccess } from "./generator";
 import { ExpressionSegment, StringToken, TextRange, Token, TokenType } from "./tokenizer";
 import { Parser } from "./parser";
 import { Constructor, CtorParameter, Field, Member, Method, Parameter, TypeToken, Value } from "./oop";
@@ -436,6 +436,32 @@ export class CallStatement extends Statement {
     }
 }
 
+export class IndexAccess extends AssignableExpression {
+
+    constructor(public index: Expression, public parent: Expression) {
+        super('index_access',TextRange.between(parent.range,index.range))
+    }
+    
+    getResultType(proc: Processor): SplashType {
+        let parentType = this.parent.getResultType(proc)
+        let indexType = this.index.getResultType(proc)
+        let indexGetter = parentType.getIndexGetter(indexType)
+        if (indexGetter) {
+            return indexGetter.retType
+        }
+        let indexSetter = parentType.getIndexSetter(indexType)
+        if (indexSetter) {
+            return indexSetter.params[1].type
+        }
+        proc.error(this.range,'No index getter found on value of type ' + parentType + ' taking ' + indexType)
+        return SplashClass.object
+    }
+
+    generate(proc: Processor): GenAssignableExpression {
+        return new GenIndexAccess(this.index.generate(proc),this.parent.generate(proc))
+    }
+    
+}
 
 export class ModifierList extends ASTNode {
 
@@ -479,6 +505,13 @@ export class ModifierList extends ASTNode {
 
     get(modifier: Modifier): Token {
         return this.modifiers.find(m=>m.value == Modifier[modifier]) || Token.EOF
+    }
+
+    getOneOf(...modifiers: Modifier[]): Token | undefined {
+        for (let m of modifiers) {
+            let t = this.get(m)
+            if (t) return t
+        }
     }
 
     checkIncompatible(parser: Parser, ...mods: Modifier[]) {
@@ -679,6 +712,8 @@ export class MethodNode extends ClassMember {
                 if (!this.modifiers.has(Modifier.native)) {
                     proc.error(this.name.range, "Duplicate method '" + this.name.value + "'")
                 }
+            } else if (this.modifiers.has(Modifier.native)) {
+                proc.error(this.name.range, "Native method " + this.name.value + " is not implemented")
             } else {
                 proc.currentClass.addMember(this.method)
                 console.log('added method',this.name.value,'to',proc.currentClass.toString())

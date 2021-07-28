@@ -8,17 +8,34 @@ import { NativeFunctions, NativeMethods } from "./native";
 import { Parser } from "./parser";
 import { Processor } from "./processor";
 
-export abstract class SingleTypeToken {
-    constructor(public range: TextRange, public optional: boolean) {
+export abstract class TypeToken {
+
+    optional = false
+
+    constructor() {
 
     }
 
+    abstract get range(): TextRange
+
     abstract toString(): string
+
+}
+
+export abstract class SingleTypeToken extends TypeToken {
+    constructor(public range: TextRange) {
+        super()
+    }
+    
 }
 
 export class BasicTypeToken extends SingleTypeToken {
-    constructor(public range: TextRange, public base: Token, public typeParams: TypeToken[], optional: boolean) {
-        super(range, optional)
+
+    static void = new BasicTypeToken(TextRange.end,Token.dummy('void'),[])
+    static object = new BasicTypeToken(TextRange.end,Token.dummy('object'),[])
+
+    constructor(public range: TextRange, public base: Token, public typeParams: TypeToken[]) {
+        super(range)
     }
 
     toString() {
@@ -28,7 +45,8 @@ export class BasicTypeToken extends SingleTypeToken {
 
 export class FunctionTypeToken extends SingleTypeToken {
     constructor(public range: TextRange, public params: ParameterNode[], public returnType: TypeToken, optional: boolean) {
-        super(range, optional)
+        super(range)
+        this.optional = optional
     }
 
     toString() {
@@ -36,34 +54,22 @@ export class FunctionTypeToken extends SingleTypeToken {
     }
 }
 
-
-export class TypeToken {
-
-    static void = new TypeToken([new BasicTypeToken(TextRange.end,Token.dummy('void'),[],false)])
-    static object = new TypeToken([new BasicTypeToken(TextRange.end,Token.dummy('object'),[],false)])
-
-    constructor(public options: SingleTypeToken[]) {
-
+export class ComboTypeToken extends TypeToken {
+    
+    constructor(public options: TypeToken[]) {
+        super()
     }
 
     get range(): TextRange {
-        return this.options.length == 0 ? TextRange.end :
-                TextRange.between(this.options[0].range, this.options[this.options.length - 1].range)
+        return TextRange.between(this.options[0].range,this.options[this.options.length-1].range)
     }
-
-    canAccept(type: SplashType) {
-        return true
-    }
-
-    static dummy(name: string) {
-        return new TypeToken([new BasicTypeToken(TextRange.end,Token.dummy(name),[],false)])
-    }
-
-    toString() {
+    toString(): string {
         return this.options.join(' | ')
     }
-
 }
+
+
+
 
 export interface Member {
     name: string
@@ -298,6 +304,20 @@ export class Value {
         }
         if (!this.isPrimitive) {
             this.inner[field] = value
+        }
+    }
+
+    getIndex(runtime: Runtime, index: Value) {
+        let indexer = this.type.getIndexGetter(index.type)
+        if (indexer) {
+            return indexer.invoke(runtime, this.type, this, index)
+        }
+    }
+
+    setIndex(runtime: Runtime, index: Value, value: Value) {
+        let indexer = this.type.getIndexSetter(index.type,value.type)
+        if (indexer) {
+            indexer.invoke(runtime, this.type, this, index, value)
         }
     }
 

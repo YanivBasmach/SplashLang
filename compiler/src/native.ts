@@ -74,6 +74,12 @@ export class NativeFunctions {
         return new Value(SplashString.instance, res)
     }
 
+    @NativeFunction('int',['string? query'])
+    readInt(r: Runtime, msg: Value) {
+        let res = this.readLine(r,msg)
+        return new Value(SplashInt.instance, parseInt(res.inner))
+    }
+
     @NativeFunction('int')
     randomUID(r: Runtime) {
         return new Value(SplashInt.instance, Math.round(Math.random() * 100000))

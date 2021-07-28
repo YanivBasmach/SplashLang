@@ -1,12 +1,14 @@
 
 main {
     var name = readLine("What is your name? ")
-    var age = int.parse(readLine("And your age? "))
+    var age = readInt("And your age? ")
 
     if (age < 18) {
         print("You are not legal")
+    } else if (age == 19) {
+        print("You are 19, that's cool")
     } else {
-        print("You are legal!")
+        print("Damn your'e old!")
     }
 
     var p = Person(name, age)

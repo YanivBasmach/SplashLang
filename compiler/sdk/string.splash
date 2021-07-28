@@ -1,0 +1,10 @@
+
+native class string {
+    native string toLowerCase()
+
+    native string toUpperCase()
+
+    native string[] chars()
+
+    get indexer string(int index)
+}

@@ -181,6 +181,26 @@ export class GenCall extends GeneratedStatement {
     
 }
 
+export class GenIndexAccess extends GenAssignableExpression {
+
+    constructor(public index: GeneratedExpression, public parent: GeneratedExpression) {
+        super()
+    }
+
+    assign(runtime: Runtime, parent: Value | undefined, value: Value): void {
+        if (parent) {
+            parent.setIndex(runtime, this.index.evaluate(runtime), value)
+        }
+    }
+    evalParent(runtime: Runtime): Value | undefined {
+        return this.parent.evaluate(runtime)
+    }
+    evalSelf(runtime: Runtime, parent?: Value): Value {
+        return parent?.getIndex(runtime, this.index.evaluate(runtime)) || Value.null
+    }
+    
+}
+
 export class GenFieldAccess extends GenAssignableExpression {
     
     constructor(public expr: GeneratedExpression, public field: string) {

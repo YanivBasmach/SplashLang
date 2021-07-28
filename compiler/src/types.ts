@@ -88,6 +88,22 @@ export abstract class SplashType {
         }
     }
 
+    getIndexGetter(index: SplashType): Method | undefined {
+        for (let m of this.methods) {
+            if (m.modifiers.has(Modifier.get) && m.modifiers.has(Modifier.indexer) && m.params.length == 1 && index.canAssignTo(m.params[0].type)) {
+                return m
+            }
+        }
+    }
+
+    getIndexSetter(index: SplashType, value?: SplashType): Method | undefined {
+        for (let m of this.methods) {
+            if (m.modifiers.has(Modifier.set) && m.modifiers.has(Modifier.indexer) && m.params.length == 2 && index.canAssignTo(m.params[0].type) && (!value || value.canAssignTo(m.params[1].type))) {
+                return m
+            }
+        }
+    }
+
     getValidMethod(name: string, ...params: SplashType[]) {
         return this.getMethods(name)
             .filter(m=>Parameter.allParamsMatch(m.params,params))[0]

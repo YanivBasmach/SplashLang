@@ -4,6 +4,10 @@ native function print(object msg)
 
 native function string readLine(string? msg)
 
+function int readInt(string? msg) {
+    return int.parse(readLine(msg))
+}
+
 native function int randomUID()
 
 native class object {
@@ -22,10 +26,6 @@ native class object {
         return "Object:{this.uid}"
     }
 
-}
-
-native class string {
-    native string toLowerCase()
 }
 
 native class boolean {

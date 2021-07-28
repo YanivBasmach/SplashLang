@@ -1,6 +1,6 @@
 import { ModifierList, ParameterNode, RootNode, FunctionNode, ASTNode } from "./ast";
 import { SplashFunction, SplashScript } from "./generator";
-import { BasicTypeToken, FunctionTypeToken, Method, SingleTypeToken, TypeToken } from "./oop";
+import { BasicTypeToken, ComboTypeToken, FunctionTypeToken, Method, SingleTypeToken, TypeToken } from "./oop";
 import { BuiltinTypes, DummySplashType, SelfSplashType, SplashComboType, SplashFunctionType, SplashInt, SplashOptionalType, SplashParameterizedType, SplashString, SplashType } from "./types";
 import { BaseTokenizer, TextRange, Token } from "./tokenizer";
 import { SplashModule } from "./env";
@@ -94,17 +94,19 @@ export class Processor {
     }
 
     resolveType(token: TypeToken): SplashType {
-        if (token.options.length == 1) {
-            let st = token.options[0]
-            return this.resolveTypeFromSingle(st) || DummySplashType.null
+        if (token instanceof SingleTypeToken) {
+            return this.resolveTypeFromSingle(token) || DummySplashType.null
+        } else if (token instanceof ComboTypeToken) {
+            return new SplashComboType(token.options.map(t=>this.resolveType(t)))
         }
-        return new SplashComboType(token.options.map(t=>this.resolveTypeFromSingle(t)))
+        return DummySplashType.null
     }
 
     resolveTypeFromSingle(token: SingleTypeToken): SplashType {
+        let res: SplashType | undefined = DummySplashType.null
         if (token instanceof BasicTypeToken) {
-            let t = this.getTypeByName(token.base.value)
-            if (t) {
+            res = this.getTypeByName(token.base.value)
+            if (res) {
                 if (token.typeParams.length > 0) {
                     let hasInvalid = false
                     let params = token.typeParams.map(p=>{
@@ -113,17 +115,18 @@ export class Processor {
                         return rt
                     })
                     if (hasInvalid) return DummySplashType.null
-                    t = new SplashParameterizedType(t,params)
+                    res = new SplashParameterizedType(res,params)
                 }
-                return token.optional ? SplashOptionalType.of(t) : t
             } else if (token.base.value == 'this' && this.currentClass) {
-                return new SelfSplashType(this.currentClass)
+                res = new SelfSplashType(this.currentClass)
             }
         } else if (token instanceof FunctionTypeToken) {
-            let f = new SplashFunctionType(this.resolveType(token.returnType), token.params.map(p=>p.generate(this)))
-            return token.optional ? SplashOptionalType.of(f) : f
+            res = new SplashFunctionType(this.resolveType(token.returnType), token.params.map(p=>p.generate(this)))
         }
-        return DummySplashType.null
+        if (!res) {
+            return DummySplashType.null
+        }
+        return token.optional ? SplashOptionalType.of(res) : res
     }
 
     resolveTypeFromString(str: string) {
