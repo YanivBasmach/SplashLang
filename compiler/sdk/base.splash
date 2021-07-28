@@ -10,8 +10,8 @@ native class object {
 
     int uid = randomUID()
 
-    operator boolean equals(this other) {
-        return this.uid == other.uid
+    operator int compare(this other) {
+        return this.uid - other.uid
     }
 
     operator string plus(string str) {
@@ -25,7 +25,7 @@ native class object {
 }
 
 native class string {
-
+    native string toLowerCase()
 }
 
 native class boolean {

@@ -3,7 +3,7 @@
 import { ExpressionList, ParameterNode } from "./ast"
 import { NativeMethods } from "./native"
 import { BasicTypeToken, Constructor, Field, FunctionTypeToken, Member, Method, Parameter, SingleTypeToken, TypeToken, Value } from "./oop"
-import { BinaryOperator, Modifier, UnaryOperator } from "./operators"
+import { BinaryOperator, getOpMethodName, Modifier, UnaryOperator } from "./operators"
 import { Parser } from "./parser"
 import { Processor } from "./processor"
 import { BaseTokenizer, TextRange, Token } from "./tokenizer"
@@ -49,7 +49,7 @@ export abstract class SplashType {
     }
 
     getBinaryOperation(op: BinaryOperator, right: SplashType): Method | undefined {
-        let name = Object.entries(BinaryOperator).find(e=>e[1] == op)?.[0] || ''
+        let name = getOpMethodName(op)
         let methods = this.getMethods(name)
         for (let m of methods) {
             if (m.modifiers.has(Modifier.operator) && m.params[0] && right.canAssignTo(m.params[0].type)) {

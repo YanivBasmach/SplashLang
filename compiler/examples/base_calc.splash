@@ -2,22 +2,22 @@
 
 main {
     displayMenu()
-    var action = inputInt()
+    var action = readInt()
 
     while (action == 1) {
-        var source = inputInt("Enter the source number: ")
+        var source = readInt("Enter the source number: ")
         continue if (source < 0) {
             print("The number must be positive!")
         }
 
-        var sourceBase = inputInt("Enter the source base: ")
+        var sourceBase = readInt("Enter the source base: ")
         continue if (sourceBase !in 2..10) {
             print("The source base must be between 2 and 10!")
         } else if (source.isValidForBase(base)) {
             print("The number {source} is invalid in base {base}")
         }
 
-        var destBase = inputInt("Enter the destination base: ")
+        var destBase = readInt("Enter the destination base: ")
         continue if (destBase !in 2..10) {
             print("The destination base must be between 2 and 10!")
         }
@@ -25,7 +25,7 @@ main {
         var result = convertBase(source, sourceBase, destBase)
 
         displayMenu()
-        action = inputInt()
+        action = readInt()
     }
 }
 

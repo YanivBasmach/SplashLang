@@ -167,9 +167,9 @@ export class NativeMethods {
         return new Value(SplashString.instance,val.inner.toLowerCase())
     }
 
-    @NativeMethod('boolean',['int other'],[Modifier.operator])
-    int_equals(r: Runtime, val: Value, other: Value) {
-        return new Value(BuiltinTypes.boolean,val.inner == other.inner)
+    @NativeMethod('int',['int other'],[Modifier.operator])
+    int_minus(r: Runtime, val: Value, other: Value) {
+        return new Value(BuiltinTypes.boolean,val.inner - other.inner)
     }
 
     @NativeMethod('int',['int other'],[Modifier.operator])

@@ -3,17 +3,16 @@ native class int {
 
     native static int parse(string value)
 
-    native operator boolean equals(int other)
+    native operator int minus(int other)
 
     boolean isOdd() {
         return this % 2 != 0
     }
-
-    operator boolean ne(int other) {
-        return !equals(other)
-    }
-
     native operator int mod(int other)
+
+    operator int compare(int other) {
+        return this - other
+    }
 
     boolean isPrime() {
 

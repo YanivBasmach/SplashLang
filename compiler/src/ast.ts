@@ -3,8 +3,8 @@ import { ExpressionSegment, StringToken, TextRange, Token, TokenType } from "./t
 import { Parser } from "./parser";
 import { Constructor, CtorParameter, Field, Member, Method, Parameter, TypeToken, Value } from "./oop";
 import { Processor } from "./processor";
-import { AssignmentOperator, BinaryOperator, Modifier, UnaryOperator } from "./operators";
-import { BuiltinTypes, DummySplashType, SplashArray, SplashClass, SplashClassType, SplashComboType, SplashFunctionType, SplashInt, SplashOptionalType, SplashParameterizedType, SplashString, SplashType } from "./types";
+import { AssignmentOperator, BinaryOperator, getActualOpReturnType, getOpMethodName, Modifier, UnaryOperator } from "./operators";
+import { BuiltinTypes, DummySplashType, SplashArray, SplashBoolean, SplashClass, SplashClassType, SplashComboType, SplashFunctionType, SplashInt, SplashOptionalType, SplashParameterizedType, SplashString, SplashType } from "./types";
 
 
 export abstract class ASTNode {
@@ -178,7 +178,7 @@ export class BinaryExpression extends Expression {
         let rightType = this.right.getResultType(proc)
         let binop = leftType.getBinaryOperation(this.op.value as BinaryOperator, rightType)
         if (binop) {
-            return binop.retType
+            return getActualOpReturnType(this.op.value as BinaryOperator,binop.retType)
         }
         proc.error(this.op.range, "Operator " + this.op.value + " cannot be applied to " + leftType + ' and ' + rightType)
         return SplashClass.object
@@ -305,7 +305,7 @@ export class Assignment extends Statement {
             let binop = this.op.value.substring(1) as BinaryOperator
             let opm = v.getBinaryOperation(binop, val)
             if (opm) {
-                if (!opm.retType.canAssignTo(v)) {
+                if (!opm.type.canAssignTo(v)) {
                     proc.error(this.op.range, "Expression of type " + val + " cannot be assigned by applying operator " + this.op.value + " with " + v)
                 }
             } else {

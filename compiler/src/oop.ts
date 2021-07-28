@@ -1,6 +1,6 @@
 import { ExpressionList, ModifierList, ParameterNode, RootNode } from "./ast";
 import { GeneratedBlock, GeneratedExpression, SplashScript } from "./generator";
-import { BinaryOperator, Modifier, UnaryOperator } from "./operators";
+import { BinaryOperator, Modifier, transformOperatorResult, UnaryOperator } from "./operators";
 import { Runtime } from "./runtime";
 import { BaseTokenizer, TextRange, Token } from "./tokenizer";
 import { DummySplashType, SplashClass, SplashClassType, SplashFunctionType, SplashOptionalType, SplashParameterizedType, SplashPrimitive, SplashString, SplashType } from "./types";
@@ -305,8 +305,10 @@ export class Value {
         let method = this.type.getBinaryOperation(op,other.type)
         if (!method) {
             console.log('did not find bin operator',this,op,other)
+            return Value.dummy
         }
-        return method?.invoke(runtime, this.type, this, other) || Value.dummy
+        let res = method.invoke(runtime, this.type, this, other)
+        return transformOperatorResult(res, method.name, op)
     }
 
     invokeUnaryOperator(runtime: Runtime, op: UnaryOperator): Value {
