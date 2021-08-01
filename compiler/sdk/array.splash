@@ -1,0 +1,18 @@
+
+native class array<T> {
+
+    native string toString()
+
+    native get indexer T(int index)
+
+    native add(T value)
+
+    native T pop()
+
+    native get int length()
+
+    native clear()
+
+    native get boolean isEmpty()
+    
+}

@@ -1,18 +1,17 @@
 
 
-import { ExpressionList, ParameterNode } from "./ast"
-import { NativeMethods } from "./native"
-import { BasicTypeToken, Constructor, Field, FunctionTypeToken, Member, Method, Parameter, SingleTypeToken, TypeToken, Value } from "./oop"
+import { ExpressionList } from "./ast"
+import { Constructor, Field, Member, Method, Parameter, Value } from "./oop"
 import { BinaryOperator, getOpMethodName, Modifier, UnaryOperator } from "./operators"
-import { Parser } from "./parser"
 import { Processor } from "./processor"
-import { BaseTokenizer, TextRange, Token } from "./tokenizer"
+import { Runtime } from "./runtime"
 
 export abstract class SplashType {
 
     protected _members: Member[] = []
     staticFields: {[name: string]: Value} = {}
     declaredMethods: Method[] = []
+    typeParams: TypeParameter[] = []
 
     constructor(public name: string) {
 
@@ -72,8 +71,12 @@ export abstract class SplashType {
         return this.methods.filter(m=>m.name == name)
     }
 
-    getMembers(name: string, srcType?: SplashType) {
+    getMembers(name: string) {
         return this.members.filter(m=>m.name == name)
+    }
+
+    getMemberTypes(proc: Processor, name: string) {
+        return this.getMembers(name).map(m=>m.type.resolve(this))
     }
 
     getField(name: string) {
@@ -106,7 +109,7 @@ export abstract class SplashType {
 
     getValidMethod(name: string, ...params: SplashType[]) {
         return this.getMethods(name)
-            .filter(m=>Parameter.allParamsMatch(m.params,params))[0]
+            .filter(m=>Parameter.allParamsMatch(m.params.map(p=>p.resolve(this)),params))[0]
     }
 
     canAssignTo(type: SplashType): boolean {
@@ -124,8 +127,26 @@ export abstract class SplashType {
         return false
     }
 
+    resolve(ownerType: SplashType): SplashType {
+        return this
+    }
+
     toString() {
         return this.name
+    }
+}
+
+export class TypeParameter extends SplashType {
+
+    constructor(name: string, public index: number, public extend?: SplashType) {
+        super(name)
+    }
+
+    resolve(ownerType: SplashType): SplashType {
+        if (ownerType instanceof SplashParameterizedType) {
+            return ownerType.params[this.index]
+        }
+        return this
     }
 }
 
@@ -146,6 +167,10 @@ export class SplashFunctionType extends SplashType {
 
     toString() {
         return 'function(' + this.params.map(p=>p.type.toString() + ' ' + p.name).join(',') + '): ' + this.retType.toString()
+    }
+
+    resolve(ownerType: SplashType): SplashType {
+        return new SplashFunctionType(this.retType.resolve(ownerType),this.params.map(p=>p.resolve(ownerType)))
     }
     
 }
@@ -168,7 +193,12 @@ export class SplashInt extends SplashPrimitive {
 
 export class SplashArray extends SplashPrimitive {
 
-    static instance = new SplashArray('array')
+    static instance = new SplashArray()
+
+    constructor() {
+        super('array')
+        this.typeParams = [new TypeParameter('T',0)]
+    }
 
     get defaultValue(): Value {
         return new Value(this, [])
@@ -242,10 +272,6 @@ export class SplashParameterizedType extends SplashType {
         return this.base.canAssignTo(type)
     }
 
-    getInvoker(proc: Processor, params: ExpressionList) {
-        return this.base.getInvoker(proc, params)
-    }
-    
     toString() {
         return this.base.toString() + '<' + this.params.join(',') + '>'
     }
@@ -306,9 +332,9 @@ export class SelfSplashType extends SplashType {
     canAssignTo(type: SplashType) {
         return true
     }
-
-    getMembers(name: string, srcType: SplashType) {
-        return srcType?.getMembers(name,srcType) || []
+    
+    resolve(ownerType: SplashType) {
+        return ownerType
     }
 }
 
@@ -316,6 +342,7 @@ export class SplashClassType extends SplashClass {
 
     constructor(public type: SplashType) {
         super(type.toString())
+        this.typeParams = [new TypeParameter('T',0)]
     }
 
     static of(type: SplashType) {

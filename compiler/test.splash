@@ -1,10 +1,10 @@
 
 main {
-    var name = readLine("What is your name? ")
-    var age = readInt("And your age? ")
+    var name = "Yaniv"
+    var age = 19
 
     if (age < 18) {
-        print("You are not legal")
+        print("You are katin")
     } else if (age == 19) {
         print("You are 19, that's cool")
     } else {
@@ -16,9 +16,18 @@ main {
     print("Hello {p.name}! This is Splash.")
     p.sayHi()
     p.sayHi("Someone")
+    print(p)
     
+    var arr = [5]
+    arr.add(8)
+    arr.add(12)
 
-    print("Is {p}'s age odd? {p.age.isOdd()}")
+    print(arr)
+    arr.pop()
+    print(arr)
+    print("Empty? {arr.isEmpty}")
+    arr.clear()
+    print("{arr} of size {arr.length} is empty? {arr.isEmpty}")
 
 }
 
@@ -34,9 +43,5 @@ class Person {
 
     sayHi(string to) {
         print("{name} says hi to {to}")
-    }
-
-    toString() {
-        return "Person({name})"
     }
 }

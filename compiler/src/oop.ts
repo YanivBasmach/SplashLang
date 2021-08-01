@@ -93,11 +93,19 @@ export abstract class ClassExecutable implements Member {
 export class Method extends ClassExecutable {
     
     body?: GeneratedBlock
-    type: SplashFunctionType
+    type: SplashType
 
     constructor(public name: string, public retType: SplashType, params: Parameter[], modifiers: ModifierList) {
         super(params,modifiers)
-        this.type = new SplashFunctionType(this.retType, this.params)
+        if (this.modifiers.has(Modifier.get)) {
+            this.type = this.retType
+        } else {
+            this.type = new SplashFunctionType(this.retType, this.params)
+        }
+    }
+
+    resolveFunctionType(ownerType: SplashType) {
+        return new SplashFunctionType(this.retType.resolve(ownerType),this.params.map(p=>p.resolve(ownerType)))
     }
 
     invoke(runtime: Runtime, inType: SplashType, thisArg?: Value, ...params: Value[]): Value {
@@ -129,6 +137,12 @@ export class Parameter {
     defValue?: GeneratedExpression
     constructor(public name: string, public type: SplashType, public hasDefValue?: boolean, public vararg?: boolean) {
 
+    }
+
+    resolve(ownerType: SplashType) {
+        let p = new Parameter(this.name, this.type.resolve(ownerType), this.hasDefValue, this.vararg)
+        p.defValue = this.defValue
+        return p
     }
 
     static getParamAt(index: number, params: Parameter[]) {
@@ -252,14 +266,17 @@ export class Value {
     static void = new Value(DummySplashType.void,undefined)
     static null = new Value(DummySplashType.null,null)
 
+    uid: number
+
     constructor(public type: SplashType, public inner: any) {
-        
+        this.uid = Math.round(Math.random() * 100000)
     }
 
     invokeMethod(runtime: Runtime, name: string, ...params: Value[]): Value {
         let method = this.type.getValidMethod(name,...params.map(p=>p.type))
         if (!method) {
             console.log('could not find method',name,params,'in',this)
+            return Value.null
         }
         return method.invoke(runtime,this.type,this,...params)
     }
@@ -292,6 +309,10 @@ export class Value {
         }
         if (this.isPrimitive) {
             return Value.null
+        }
+        let getterMethod = this.type.getMethods(field)
+        if (getterMethod.length > 0) {
+            return getterMethod[0].invoke(runtime, this.type, this)
         }
         
         return this.inner[field]

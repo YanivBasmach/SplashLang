@@ -1,4 +1,4 @@
-import { ElseStatement, NullExpression, ArrayExpression, AssignableExpression, Assignment, BinaryExpression, CallAccess, CallStatement, CodeBlock, Expression, FieldAccess, IfStatement, InvalidExpression, LiteralExpression, MainBlock, RootNode, Statement, UnaryExpression, VarDeclaration, VariableAccess, ModifierList, ParameterNode, FunctionNode, ReturnStatement, ExpressionList, StringExpression, ClassDeclaration, ClassMember, MethodNode, FieldNode, ConstructorParamNode, ConstructorNode, ThisAccess, ASTNode, IndexAccess } from "./ast";
+import { ElseStatement, NullExpression, ArrayExpression, AssignableExpression, Assignment, BinaryExpression, CallAccess, CallStatement, CodeBlock, Expression, FieldAccess, IfStatement, InvalidExpression, LiteralExpression, MainBlock, RootNode, Statement, UnaryExpression, VarDeclaration, VariableAccess, ModifierList, ParameterNode, FunctionNode, ReturnStatement, ExpressionList, StringExpression, ClassDeclaration, ClassMember, MethodNode, FieldNode, ConstructorParamNode, ConstructorNode, ThisAccess, ASTNode, IndexAccess, TypeParameterNode } from "./ast";
 import { BasicTypeToken, ComboTypeToken, FunctionTypeToken, SingleTypeToken, TypeToken } from "./oop";
 import { AssignmentOperator, BinaryOperator, Modifier } from "./operators";
 import { DelegateTokenizer, ExpressionSegment, LiteralSegment, Position, StringToken, TextRange, Token, Tokenizer, TokenType } from "./tokenizer";
@@ -281,21 +281,18 @@ export class Parser {
             this.next()
             return this.parseConstructor(modifiers)
         }
+        let noName = modifiers.getOneOf(Modifier.indexer, Modifier.invoker, Modifier.iterator, Modifier.accessor, Modifier.assigner)
         let type: TypeToken | undefined
-        if (this.peek(1).value == '(') {
+        if (this.peek(1).value == '(' && !noName) {
             type = BasicTypeToken.void
         } else {
             type = this.parseTypeToken(true)
             if (!type) return
         }
         let name;
-        let optionalName = modifiers.getOneOf(Modifier.indexer, Modifier.invoker, Modifier.iterator, Modifier.accessor, Modifier.assigner)
-        if (optionalName) {
-            if (this.isNext(TokenType.identifier)) {
-                name = this.next()
-            } else {
-                name = optionalName
-            }
+        
+        if (noName) {
+            name = noName
         } else {
             name = this.expect(TokenType.identifier)
         }
@@ -314,7 +311,7 @@ export class Parser {
         modifiers.checkIncompatible(this,Modifier.accessor,Modifier.invoker,Modifier.assigner,Modifier.iterator,Modifier.operator,Modifier.get,Modifier.set)
         modifiers.checkIncompatible(this,Modifier.private,Modifier.operator,Modifier.indexer,Modifier.iterator,Modifier.invoker,Modifier.accessor,Modifier.assigner)
 
-        let params = this.parseParameterList()
+        let params = this.parseList(this.parseParameter,'(',')')
         let body: CodeBlock | undefined
         if (this.isValueNext('{')) {
             body = this.parseBlock()
@@ -335,7 +332,7 @@ export class Parser {
     parseConstructor(modifiers: ModifierList) {
         modifiers.assertHasOnly(this,Modifier.private,Modifier.protected)
         modifiers.checkIncompatible(this,Modifier.private,Modifier.protected)
-        let params = this.parseCtorParameterList()
+        let params = this.parseList(this.parseCtorParameter,'(',')')
         let body = this.parseBlock()
         return new ConstructorNode(params,modifiers,body)
     }
@@ -398,7 +395,7 @@ export class Parser {
         }
         let name = this.expect(TokenType.identifier)
         if (name && this.isValueNext('(')) {
-            let params = this.parseParameterList()
+            let params = this.parseList(this.parseParameter,'(',')')
             let code = this.parseBlock()
             return new FunctionNode(label.range, modifiers, name, retType, params, code)
         }
@@ -410,27 +407,41 @@ export class Parser {
         modifiers.checkIncompatible(this,Modifier.abstract,Modifier.final)
         let name = this.expect(TokenType.identifier)
         if (name) {
-            // todo: add extends
+            let typeParams: TypeParameterNode[] = [];
+            if (this.isValueNext('<')) {
+                typeParams = this.parseList(this.parseTypeParam,'<','>')
+            }
             let body = this.parseClassBody()
-            return new ClassDeclaration(name,body,modifiers)
+            return new ClassDeclaration(name,typeParams,body,modifiers)
         }
     }
-    
-    parseParameterList() {
-        let params: ParameterNode[] = []
-        if (this.expectValue('(')) {
-            while (this.hasNext() && !this.isValueNext(')')) {
-                let p = this.parseParameter();
+
+    parseList<T>(parser: ()=>T | undefined, open: string, close: string): T[] {
+        let values: T[] = []
+        if (this.expectValue(open)) {
+            while (this.hasNext() && !this.isValueNext(close)) {
+                let p = parser.apply(this)
                 if (p) {
-                    params.push(p)
+                    values.push(p)
                 }
                 if (!this.skipValue(',')) {
                     break
                 }
             }
-            this.expectValue(')')
+            this.expectValue(close)
         }
-        return params
+        return values
+    }
+
+    parseTypeParam(): TypeParameterNode | undefined {
+        let base = this.expect(TokenType.identifier)
+            if (base) {
+            let extend: TypeToken | undefined
+            if (this.skipValue('extends')) {
+                extend = this.parseTypeToken(false)
+            }
+            return new TypeParameterNode(base, extend)
+        }
     }
 
     parseParameter(): ParameterNode | undefined {
@@ -447,23 +458,6 @@ export class Parser {
                 return new ParameterNode(name, type, expr, vararg)
             }
         }
-    }
-
-    parseCtorParameterList() {
-        let params: ConstructorParamNode[] = []
-        if (this.expectValue('(')) {
-            while (this.hasNext() && !this.isValueNext(')')) {
-                let p = this.parseCtorParameter();
-                if (p) {
-                    params.push(p)
-                }
-                if (!this.skipValue(',')) {
-                    break
-                }
-            }
-            this.expectValue(')')
-        }
-        return params
     }
 
     parseCtorParameter(): ConstructorParamNode | undefined {
@@ -514,7 +508,7 @@ export class Parser {
             this.expectValue(')')
         }
         if (this.skipValue('function')) {
-            let params = this.parseParameterList()
+            let params = this.parseList(this.parseParameter,'(',')')
             let optional = allowOptional && this.skipValue('?')
             this.expectValue('=>')
             let ret = this.parseTypeToken(allowOptional)
@@ -707,8 +701,6 @@ export class Parser {
         }
         return this.parseAccessChain(expr)
         /* todo: add other types of expression
-        this + access
-        null
         json object
         */
     }

@@ -1,7 +1,7 @@
 import { Method, Parameter, Value } from "./oop";
 import { Modifier } from "./operators";
-import { Runtime } from "./runtime";
-import { BuiltinTypes, SplashClass, SplashClassType, SplashInt, SplashString, SplashType } from "./types";
+import { Runtime, SplashRuntimeError } from "./runtime";
+import { BuiltinTypes, SplashBoolean, SplashClass, SplashClassType, SplashInt, SplashString, SplashType } from "./types";
 import { ModifierList } from "./ast";
 import { Processor } from "./processor";
 import prompt from 'prompt-sync'
@@ -61,6 +61,7 @@ export class NativeFunctions {
     @NativeFunction('void',['object msg'])
     print(r: Runtime, msg: Value) {
         console.log(">> " + msg.toString(r))
+        return Value.void
     }
 
     @NativeFunction('string',['string? query'])
@@ -78,11 +79,6 @@ export class NativeFunctions {
     readInt(r: Runtime, msg: Value) {
         let res = this.readLine(r,msg)
         return new Value(SplashInt.instance, parseInt(res.inner))
-    }
-
-    @NativeFunction('int')
-    randomUID(r: Runtime) {
-        return new Value(SplashInt.instance, Math.round(Math.random() * 100000))
     }
 
 }
@@ -138,7 +134,7 @@ export class NativeMethods {
 
     static findMethod(type: SplashType, name: string, paramTypes: SplashType[]) {
         for (let e of nativeMethods) {
-            if (type.canAssignTo(e.type) && e.name == name && Parameter.allParamsMatch(e.params,paramTypes)) {
+            if (type.canAssignTo(e.type) && e.name == name && Parameter.allParamsMatch(e.params.map(p=>p.resolve(type)),paramTypes)) {
                 return e
             }
         }
@@ -163,14 +159,26 @@ export class NativeMethods {
         }
     }
 
-    @NativeMethod('this',['this def'],[Modifier.operator])
-    object_default(r: Runtime, val: Value, other: Value) {
-        return val.isNull ? other : val
-    }
+    
 
     @NativeMethod('string')
     string_toLowerCase(r: Runtime, val: Value) {
         return new Value(SplashString.instance,val.inner.toLowerCase())
+    }
+
+    @NativeMethod('string')
+    string_toUpperCase(r: Runtime, val: Value) {
+        return new Value(SplashString.instance,val.inner.toUpperCase())
+    }
+
+    @NativeMethod('string')
+    string_chars(r: Runtime, val: Value) {
+        return new Value(SplashString.instance,val.inner.split(""))
+    }
+
+    @NativeMethod('int',['int other'],[Modifier.operator])
+    int_plus(r: Runtime, val: Value, other: Value) {
+        return new Value(BuiltinTypes.boolean,val.inner + other.inner)
     }
 
     @NativeMethod('int',['int other'],[Modifier.operator])
@@ -196,6 +204,69 @@ export class NativeMethods {
     @NativeMethod('boolean',[],[Modifier.operator])
     boolean_not(r: Runtime, val: Value) {
         return new Value(BuiltinTypes.boolean,!val.inner)
+    }
+
+    @NativeMethod('T',['int index'],[Modifier.get,Modifier.indexer])
+    array_indexer(r: Runtime, arr: Value, index: Value) {
+        let i: number
+        if (index.inner < 0) {
+            i = arr.inner.length + index.inner
+        } else {
+            i = index.inner
+        }
+        if (i >= arr.inner.length || i < 0) {
+            throw new SplashRuntimeError(`Array index out of range. Index: ${i}, Length: ${arr.inner.length}`)
+        }
+        return arr.inner[i]
+    }
+
+    @NativeMethod('void',['T value'])
+    array_add(r: Runtime, arr: Value, val: Value) {
+        arr.inner.push(val)
+        return Value.void
+    }
+
+    @NativeMethod('string')
+    array_toString(r: Runtime, arr: Value) {
+        return new Value(SplashString.instance,'[' + (arr.inner as Value[]).map(v=>v.toString(r)).join(', ') + ']')
+    }
+
+    @NativeMethod('T')
+    array_pop(r: Runtime, arr: Value) {
+        if (arr.inner.length == 0) {
+            throw new SplashRuntimeError('Cannot pop() a value from an empty array')
+        }
+        return arr.inner.pop()
+    }
+
+    @NativeMethod('int',[],[Modifier.get])
+    array_length(r: Runtime, arr: Value) {
+        return new Value(SplashInt.instance, arr.inner.length)
+    }
+
+    @NativeMethod('void')
+    array_clear(r: Runtime, arr: Value) {
+        arr.inner = []
+    }
+
+    @NativeMethod('boolean',[],[Modifier.get])
+    array_isEmpty(r: Runtime, arr: Value) {
+        return new Value(SplashBoolean.instance,arr.inner.length == 0)
+    }
+
+    @NativeMethod('this',['this def'],[Modifier.operator])
+    object_default(r: Runtime, val: Value, other: Value) {
+        return val.isNull ? other : val
+    }
+
+    @NativeMethod('string')
+    object_toString(r: Runtime, val: Value) {
+        return new Value(SplashString.instance,val.isPrimitive ? val.inner.toString() : val.type.name + ':' + val.uid)
+    }
+
+    @NativeMethod('int',['this other'])
+    object_compare(r: Runtime, val: Value, other: Value) {
+        return new Value(SplashInt.instance,val.uid - other.uid)
     }
 
 }

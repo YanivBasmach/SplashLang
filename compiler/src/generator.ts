@@ -3,7 +3,7 @@ import { NativeFunctions } from "./native";
 import { Parameter, Value } from "./oop";
 import { AssignmentOperator, BinaryOperator, UnaryOperator } from "./operators";
 import { SplashArray, SplashClass, SplashComboType, SplashFunctionType, SplashInt, SplashOptionalType, SplashString, SplashType } from "./types";
-import { Returned, Runtime } from "./runtime";
+import { Returned, Runtime, SplashRuntimeError } from "./runtime";
 import { TokenType } from "./tokenizer";
 
 
@@ -31,8 +31,12 @@ export class GeneratedBlock extends GeneratedStatement {
                 s.run(runtime)
             }
         } catch (e) {
-            if (e.message != 'returned') {
-                console.log('Runtime Error:',e)
+            if (e instanceof Returned) {
+                //console.log("Returned");
+            } else if (e instanceof SplashRuntimeError) {
+                console.log("Runtime Error:",e.message)
+            } else {
+                console.log("Unexpected",e)
             }
         }
     }

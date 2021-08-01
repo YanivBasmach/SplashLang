@@ -147,16 +147,27 @@ const multiCharOperators = ['++','--','&&','||','**','//','<=','>=','==','!=','.
 
 const keywords = ['main','function','if','this','var','const','as','is','in','while','for','switch','class','return','constructor','private','protected','abstract','native','final','static','readonly','operator','iterator','get','set','indexer','accessor','assigner','invoker','true','false','null','void']
 
-export abstract class Tokenizer {
+const escapableChars: {[key: string]: string} = {
+    '\\': '\\',
+    '"': '"',
+    "'": "'",
+    '{': '{',
+    'n': '\n',
+    'b': '\b',
+    'r': '\r',
+    't': '\t',
+    'f': '\f'
+}
 
-    abstract next(): Token
+export interface Tokenizer {
 
-    abstract canRead(): boolean
+    next(): Token
 
+    canRead(): boolean
 
 }
 
-export class BaseTokenizer extends Tokenizer {
+export class BaseTokenizer implements Tokenizer {
 
     pos: number = 0;
     line: number = 0;
@@ -164,7 +175,7 @@ export class BaseTokenizer extends Tokenizer {
     currentStringSegment?: ExpressionSegment
 
     constructor(private input: string) {
-        super()
+        
     }
 
     next(): Token {
@@ -234,16 +245,20 @@ export class BaseTokenizer extends Tokenizer {
                     else if (tok.value == '}') stack--
                     tok = this.next()
                 }
-            } else if (c == '\n') {
-                return Token.invalid({start, end: this.getPos()})
             } else if (c != quote) {
                 if (!(current instanceof LiteralSegment)) {
                     current = new LiteralSegment()
                     segments.push(current)
                 }
-                (current as LiteralSegment).value += c;
                 if (c == '\\' && this.canRead()) {
-                    (current as LiteralSegment).value += this.nextChar()
+                    let next = this.nextChar()
+                    if (escapableChars[next]) {
+                        (current as LiteralSegment).value += escapableChars[next];
+                    } else {
+                        (current as LiteralSegment).value += c + next
+                    }
+                } else {
+                    (current as LiteralSegment).value += c;
                 }
             } else {
                 break
@@ -324,11 +339,11 @@ export class BaseTokenizer extends Tokenizer {
     }
 }
 
-export class DelegateTokenizer extends Tokenizer {
+export class DelegateTokenizer implements Tokenizer {
 
     pos: number = 0
     constructor(public tokens: Token[]) {
-        super()
+        
     }
 
     next(): Token {

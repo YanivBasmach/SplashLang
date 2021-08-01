@@ -6,5 +6,7 @@ native class string {
 
     native string[] chars()
 
-    get indexer string(int index)
+    get indexer string(int index) {
+        return chars()[index]
+    }
 }

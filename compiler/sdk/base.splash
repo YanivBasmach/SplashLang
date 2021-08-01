@@ -8,23 +8,15 @@ function int readInt(string? msg) {
     return int.parse(readLine(msg))
 }
 
-native function int randomUID()
-
 native class object {
 
-    int uid = randomUID()
-
-    operator int compare(this other) {
-        return this.uid - other.uid
-    }
+    native operator int compare(this other)
 
     operator string plus(string str) {
         return "{this}{str}"
     }
 
-    string toString() {
-        return "Object:{this.uid}"
-    }
+    native string toString()
 
 }
 

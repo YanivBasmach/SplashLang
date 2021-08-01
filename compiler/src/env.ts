@@ -37,12 +37,16 @@ export function compileModule(path: string, sdk?: SplashModule) {
 
     for (let e of Object.entries(asts)) {
         let script = processAndGenerate(proc,e[1],e[0])
-        module.scripts.push(script)
+        if (script) {
+            module.scripts.push(script)
+        } else {
+            module.valid = false
+        }
     }
     return module
 }
 
-export function compileFile(file: string, sdk: SplashModule): SplashScript {
+export function compileFile(file: string, sdk: SplashModule): SplashScript | undefined {
     let root = parseFile(file)
     if (root) {
         let proc = new Processor()
@@ -53,7 +57,7 @@ export function compileFile(file: string, sdk: SplashModule): SplashScript {
         let script = processAndGenerate(proc,root,file)
         return script
     }
-    return new SplashScript(file)
+    return
 }
 
 export function parseFile(file: string): RootNode | undefined {
@@ -85,12 +89,13 @@ export function processAndGenerate(proc: Processor, ast: RootNode, file: string)
         console.timeEnd('generation done')
         return generated
     }
-    return new SplashScript(file)
+    return undefined
 }
 
 export class SplashModule {
     
     scripts: SplashScript[] = []
+    valid: boolean = true
 
     constructor(public name: string) {
 

@@ -1,7 +1,7 @@
-import { ModifierList, ParameterNode, RootNode, FunctionNode, ASTNode } from "./ast";
+import { ModifierList, ParameterNode, RootNode, FunctionNode, ASTNode, TypeParameterNode } from "./ast";
 import { SplashFunction, SplashScript } from "./generator";
 import { BasicTypeToken, ComboTypeToken, FunctionTypeToken, Method, SingleTypeToken, TypeToken } from "./oop";
-import { BuiltinTypes, DummySplashType, SelfSplashType, SplashComboType, SplashFunctionType, SplashInt, SplashOptionalType, SplashParameterizedType, SplashString, SplashType } from "./types";
+import { BuiltinTypes, DummySplashType, SelfSplashType, SplashClass, SplashComboType, SplashFunctionType, SplashInt, SplashOptionalType, SplashParameterizedType, SplashString, SplashType } from "./types";
 import { BaseTokenizer, TextRange, Token } from "./tokenizer";
 import { SplashModule } from "./env";
 import { Parser } from "./parser";
@@ -70,6 +70,8 @@ export class Processor {
     }
 
     getTypeByName(name: string) {
+        let tp = this.getTypeParam(name)
+        if (tp) return tp
         return this.types.find(t=>t.name == name)
     }
 
@@ -79,10 +81,10 @@ export class Processor {
         }
     }
 
-    getFunctionType(name: string): SplashFunctionType | undefined {
+    getFunctionType(name: string): SplashType | undefined {
         if (this.currentClass) {
             for (let m of this.currentClass.methods) {
-                if (m.name == name) return m.type
+                if (m.name == name) return m.resolveFunctionType(this.currentClass)
             }
         }
         for (let f of this.functions) {
@@ -143,6 +145,14 @@ export class Processor {
                 return frame[name]
             }
         }
+    }
+
+    getTypeParam(name: string) {
+        if (this.currentClass) {
+            let tp = this.currentClass.typeParams.find(t=>t.name == name)
+            if (tp) return tp
+        }
+        //todo: add function type params
     }
 }
 

@@ -9,13 +9,16 @@ const sdk = compileModule('./sdk')
 console.log(sdk)
 const file = './test.splash'
 
-let compiled = compileFile(file,sdk)
+if (sdk.valid) {
+    let compiled = compileFile(file,sdk)
 
-console.log(compiled)
-
-console.log('executing...')
-console.time('execution done')
-let rt = new Runtime()
-rt.includeModule(sdk)
-compiled.run(rt)
-console.timeEnd('execution done')
+    if (compiled) {
+        console.log(compiled)
+        console.log('executing...')
+        console.time('execution done')
+        let rt = new Runtime()
+        rt.includeModule(sdk)
+        compiled.run(rt)
+        console.timeEnd('execution done')
+    }
+}

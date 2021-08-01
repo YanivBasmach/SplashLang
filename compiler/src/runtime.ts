@@ -79,7 +79,7 @@ export class Runtime {
     getVariable(name: string): Value {
         if (this.variables[name]) return this.variables[name]
         if (this.currentType) {
-            for (let m of this.currentType.getMembers(name,)) {
+            for (let m of this.currentType.getMembers(name)) {
                 if (m instanceof Field && m.modifiers.has(Modifier.static)) {
                     return this.currentType.staticFields[m.name]
                 }
@@ -121,5 +121,15 @@ export class Runtime {
 export class Returned extends Error {
     constructor() {
         super('returned')
+
+        Object.setPrototypeOf(this, Returned.prototype);
+    }
+}
+
+export class SplashRuntimeError extends Error {
+    constructor(msg: string) {
+        super(msg)
+
+        Object.setPrototypeOf(this, SplashRuntimeError.prototype);
     }
 }

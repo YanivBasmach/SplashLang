@@ -4,7 +4,7 @@ import { Parser } from "./parser";
 import { Constructor, CtorParameter, Field, Member, Method, Parameter, TypeToken, Value } from "./oop";
 import { Processor } from "./processor";
 import { AssignmentOperator, BinaryOperator, getActualOpReturnType, getOpMethodName, Modifier, UnaryOperator } from "./operators";
-import { BuiltinTypes, DummySplashType, SplashArray, SplashBoolean, SplashClass, SplashClassType, SplashComboType, SplashFunctionType, SplashInt, SplashOptionalType, SplashParameterizedType, SplashString, SplashType } from "./types";
+import { BuiltinTypes, DummySplashType, SplashArray, SplashBoolean, SplashClass, SplashClassType, SplashComboType, SplashFunctionType, SplashInt, SplashOptionalType, SplashParameterizedType, SplashString, SplashType, TypeParameter } from "./types";
 
 
 export abstract class ASTNode {
@@ -330,12 +330,12 @@ export class FieldAccess extends AssignableExpression {
 
     getResultType(proc: Processor): SplashType {
         let parentType = this.parent.getResultType(proc)
-        let m = parentType.getMembers(this.field.value,proc.currentClass)
-        if (m.length == 1) {
-            return m[0].type
+        let t = parentType.getMemberTypes(proc,this.field.value)
+        if (t.length == 1) {
+            return t[0]
         }
-        if (m.length > 0) {
-            return new SplashComboType(m.map(f=>f.type))
+        if (t.length > 0) {
+            return new SplashComboType(t)
         }
         proc.error(this.field.range, "Unknown member " + this.field.value + " in type " + parentType)
         return SplashClass.object
@@ -510,7 +510,7 @@ export class ModifierList extends ASTNode {
     getOneOf(...modifiers: Modifier[]): Token | undefined {
         for (let m of modifiers) {
             let t = this.get(m)
-            if (t) return t
+            if (t.isValid()) return t
         }
     }
 
@@ -529,6 +529,23 @@ export class ModifierList extends ASTNode {
             }
         }
     }
+}
+
+export class TypeParameterNode extends ASTNode {
+
+    param: TypeParameter | undefined
+
+    constructor(public base: Token, public extend?: TypeToken) {
+        super('type_parameter')
+    }
+
+    process(proc: Processor, index: number) {
+        if (this.extend) {
+            proc.validateType(this.extend)
+        }
+        this.param = new TypeParameter(this.base.value, index, this.extend ? proc.resolveType(this.extend) : undefined)
+    }
+    
 }
 
 export class ParameterNode extends ASTNode {
@@ -704,21 +721,18 @@ export class MethodNode extends ClassMember {
         for (let p of this.params) {
             processedParams.push(new Parameter(p.name.value,proc.resolveType(p.type),p.defValue !== undefined,p.vararg))
         }
-
-        if (proc.currentClass) {
-            this.method = new Method(this.name.value, proc.resolveType(this.retType), processedParams, this.modifiers)
-            let existing = proc.currentClass.declaredMethods.find(m=>m.name == this.name.value && Parameter.allParamsMatch(m.params,processedParams.map(p=>p.type)))
-            if (existing) {
-                if (!this.modifiers.has(Modifier.native)) {
-                    proc.error(this.name.range, "Duplicate method '" + this.name.value + "'")
-                }
-            } else if (this.modifiers.has(Modifier.native)) {
-                proc.error(this.name.range, "Native method " + this.name.value + " is not implemented")
-            } else {
-                proc.currentClass.addMember(this.method)
-                console.log('added method',this.name.value,'to',proc.currentClass.toString())
+        
+        this.method = new Method(this.name.value, proc.resolveType(this.retType), processedParams, this.modifiers)
+        let existing = type.declaredMethods.find(m=>m.name == this.name.value && Parameter.allParamsMatch(m.params,processedParams.map(p=>p.type)))
+        if (existing) {
+            if (!this.modifiers.has(Modifier.native)) {
+                proc.error(this.name.range, "Duplicate method '" + this.name.value + "'")
             }
-            
+        } else if (this.modifiers.has(Modifier.native)) {
+            proc.error(this.name.range, "Native method " + this.name.value + " is not implemented")
+        } else {
+            type.addMember(this.method)
+            console.log('added method',this.name.value,'to',type.toString())
         }
     }
 
@@ -775,7 +789,7 @@ export class ClassDeclaration extends ASTNode {
 
     type: SplashType
 
-    constructor(public name: Token, public body: ClassMember[], public modifiers: ModifierList) {
+    constructor(public name: Token, public typeParams: TypeParameterNode[], public body: ClassMember[], public modifiers: ModifierList) {
         super('class_decl')
         if (modifiers.has(Modifier.native)) {
             this.type = BuiltinTypes[this.name.value]
@@ -789,6 +803,22 @@ export class ClassDeclaration extends ASTNode {
             proc.types.push(this.type)
         }
         proc.currentClass = this.type
+        proc.push()
+
+        let uniqueTP: string[] = []
+        let index = 0;
+        for (let tp of this.typeParams) {
+            tp.process(proc,index)
+            if (tp.param) {
+                this.type.typeParams.push(tp.param)
+            }
+            if (uniqueTP.includes(tp.base.value)) {
+                proc.error(tp.base.range,'Duplicate type parameter')
+            } else {
+                uniqueTP.push(tp.base.value)
+            }
+            index++
+        }
 
         for (let m of this.body) {
             m.index(proc, this.type)
@@ -797,6 +827,8 @@ export class ClassDeclaration extends ASTNode {
         for (let m of this.body) {
             m.process(proc)
         }
+
+        proc.pop()
         proc.currentClass = undefined
     }
     generate(proc: Processor): SplashType {
@@ -804,6 +836,7 @@ export class ClassDeclaration extends ASTNode {
         for (let m of this.body) {
             m.generate(proc,this.type)
         }
+        
         proc.currentClass = undefined
         return this.type
     }

@@ -3,6 +3,8 @@ native class int {
 
     native static int parse(string value)
 
+    native operator int plus(int other)
+
     native operator int minus(int other)
 
     boolean isOdd() {
