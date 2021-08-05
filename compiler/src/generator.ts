@@ -84,7 +84,7 @@ export class SplashFunction {
     }
 
     toFunctionType() {
-        return new SplashFunctionType(this.retType, this.params)
+        return new SplashFunctionType(this.retType, this.params.map(p=>p.type))
     }
 
     invoke(runtime: Runtime, ...params: Value[]): Value {

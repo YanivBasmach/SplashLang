@@ -424,7 +424,7 @@ export class CallAccess extends Expression {
     getResultType(proc: Processor): SplashType {
         let res = this.parent.getResultType(proc)
         if (res instanceof SplashFunctionType) {
-            if (this.params.canApplyTo(proc,res.params,true)) {
+            if (this.params.canApplyTo(proc,res.params.map(t=>new Parameter('',t)),true)) {
                 return res.retType
             }
             return SplashClass.object
@@ -432,14 +432,14 @@ export class CallAccess extends Expression {
             let errFunc: SplashFunctionType | undefined
             for (let option of res.types) {
                 if (option instanceof SplashFunctionType) {
-                    if (this.params.canApplyTo(proc,option.params,false)) {
+                    if (this.params.canApplyTo(proc,option.params.map(t=>new Parameter('',t)),false)) {
                         return option.retType
                     }
                     errFunc = option
                 }
             }
             if (errFunc) {
-                this.params.canApplyTo(proc,errFunc.params,true)
+                this.params.canApplyTo(proc,errFunc.params.map(t=>new Parameter('',t)),true)
                 return SplashClass.object
             }
         }
@@ -675,7 +675,7 @@ export class FunctionNode extends ASTNode {
     }
 
     toFunctionType(proc: Processor): SplashFunctionType {
-        return new SplashFunctionType(proc.resolveType(this.retType), this.params.map(p=>p.generate(proc)))
+        return new SplashFunctionType(proc.resolveType(this.retType), this.params.map(p=>p.generate(proc).type))
     }
 
 }

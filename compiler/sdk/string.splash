@@ -18,8 +18,29 @@ native class string {
         return length == 0
     }
 
+    /*
     int? indexOf(string substr) {
-        
+        if (substr.isEmpty) return -1
+        var strIndex = 0
+        var start = -1
+        for (var i : 0..length) {
+            var c = this[i]
+            if (c == substr[strIndex]) {
+                if (start < 0) {
+                    start = i
+                }
+                strIndex++
+            } else if (strIndex == substr.length) {
+                return start
+            } else {
+                strIndex = 0
+            }
+        }
+        if (strIndex == substr.length) {
+            return start
+        } else {
+            return -1
+        }
     }
 
     boolean contains(string substr) {
@@ -27,7 +48,11 @@ native class string {
     }
 
     string repeat(int times) {
-
+        var res = ""
+        repeat (times) {
+            res += this
+        }
+        return res
     }
 
     string substring(int startIndex, int? endIndex) {
@@ -45,8 +70,7 @@ native class string {
     int? lastIndexOf(string substr) {
 
     }
-
-    /*
+    
     native get indexer string(Range<int> range)
     */
     

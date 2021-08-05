@@ -117,7 +117,7 @@ export class Processor {
                 res = new SelfSplashType(this.currentClass)
             }
         } else if (token instanceof FunctionTypeToken) {
-            res = new SplashFunctionType(this.resolveType(token.returnType), token.params.map(p=>p.generate(this)))
+            res = new SplashFunctionType(this.resolveType(token.returnType), token.params.map(p=>this.resolveType(p)))
         }
         if (!res) {
             return DummySplashType.null

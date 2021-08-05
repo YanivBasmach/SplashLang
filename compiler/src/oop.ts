@@ -44,13 +44,13 @@ export class BasicTypeToken extends SingleTypeToken {
 }
 
 export class FunctionTypeToken extends SingleTypeToken {
-    constructor(public range: TextRange, public params: ParameterNode[], public returnType: TypeToken, optional: boolean) {
+    constructor(public range: TextRange, public params: TypeToken[], public returnType: TypeToken, optional: boolean) {
         super(range)
         this.optional = optional
     }
 
     toString() {
-        return '(' + this.params.map(p=>p.type.toString() + ' ' + p.name).join(', ') + ')=>' + this.returnType.toString()
+        return '(' + this.params.join(', ') + ')=>' + this.returnType.toString()
     }
 }
 
@@ -100,13 +100,13 @@ export class Method extends ClassExecutable {
         if (this.modifiers.has(Modifier.get)) {
             this.type = this.retType
         } else {
-            this.type = new SplashFunctionType(this.retType, this.params)
+            this.type = new SplashFunctionType(this.retType, this.params.map(p=>p.type))
         }
     }
 
     resolveFunctionType(ownerType: SplashType) {
         if (this.type instanceof SplashFunctionType) {
-            return new SplashFunctionType(this.retType.resolve(ownerType),this.params.map(p=>p.resolve(ownerType)))
+            return new SplashFunctionType(this.retType.resolve(ownerType),this.params.map(p=>p.resolve(ownerType).type))
         }
         return this.retType.resolve(ownerType)
     }
@@ -219,7 +219,7 @@ export class Constructor extends ClassExecutable {
     name: string = 'constructor'
     constructor(type: SplashType, params: CtorParameter[], modifiers: ModifierList) {
         super(params,modifiers)
-        this.type = new SplashFunctionType(type, this.params)
+        this.type = new SplashFunctionType(type, this.params.map(p=>p.type))
     }
 
     invoke(runtime: Runtime, inType: SplashType, thisArg?: Value, ...params: Value[]): Value {

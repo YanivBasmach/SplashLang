@@ -164,14 +164,9 @@ export class TypeParameter extends SplashType {
     }
 }
 
-export interface FunctionSignature {
-    retType: SplashType
-    params: Parameter[]
-}
-
 export class SplashFunctionType extends SplashType {
 
-    constructor(public retType: SplashType, public params: Parameter[]) {
+    constructor(public retType: SplashType, public params: SplashType[]) {
         super('function')
     }
 
@@ -180,7 +175,7 @@ export class SplashFunctionType extends SplashType {
     }
 
     toString() {
-        return 'function(' + this.params.map(p=>p.type.toString() + ' ' + p.name).join(',') + '): ' + this.retType.toString()
+        return 'function(' + this.params.join(',') + '): ' + this.retType.toString()
     }
 
     resolve(ownerType: SplashType): SplashType {
