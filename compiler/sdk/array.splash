@@ -7,12 +7,54 @@ native class array<T> {
 
     native add(T value)
 
-    native T pop()
+    native add(int index, T value)
+
+    native T remove(int index)
 
     native get int length()
 
     native clear()
 
-    native get boolean isEmpty()
+    get boolean isEmpty() {
+        return length == 0
+    }
+
+    T pop() {
+        return remove(length - 1)
+    }
+
+    T shift() {
+        return remove(0)
+    }
+
+    unshift(T value) {
+        add(0, value)
+    }
+
+    /*
+    native iterator T[]()
+
+    N[] map<N>(function(T): N mapper) {
+        var newArr = []<N>
+        for (var item : this) {
+            newArr.add(mapper(val))
+        }
+        return newArr
+    }
+
+    get indexer T[](Range<int> range) {
+        var newArr = []<T>
+        for (var i : range) {
+            newArr.add(this[i])
+        }
+        return newArr
+    }
+
+    T? find(function(T): boolean filter) {
+        for (var item : this) {
+            if (filter(item)) return item
+        }
+    }
+    */
     
 }

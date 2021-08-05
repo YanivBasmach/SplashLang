@@ -9,4 +9,45 @@ native class string {
     get indexer string(int index) {
         return chars()[index]
     }
+
+    get int length() {
+        return chars().length
+    }
+
+    get boolean isEmpty() {
+        return length == 0
+    }
+
+    int? indexOf(string substr) {
+        
+    }
+
+    boolean contains(string substr) {
+        return indexOf(substr)
+    }
+
+    string repeat(int times) {
+
+    }
+
+    string substring(int startIndex, int? endIndex) {
+
+    }
+
+    boolean startsWith(string str) {
+
+    }
+
+    boolean endsWith(string str) {
+
+    }
+
+    int? lastIndexOf(string substr) {
+
+    }
+
+    /*
+    native get indexer string(Range<int> range)
+    */
+    
 }

@@ -100,10 +100,10 @@ export interface NativeMethod {
     run: (r: Runtime, thisArg?: Value, ...params: Value[])=>Value
 }
 
-function NativeMethod(retType: string, params?: string[], modifiers?: Modifier[]) {
+function NativeMethod(retType: string, params?: string[], modifiers?: Modifier[], altname?: string) {
     return function(target: any, key: string, desc: PropertyDescriptor) {
         let type = key.substring(0,key.indexOf('_'))
-        let name = key.substring(key.indexOf('_') + 1)
+        let name = altname || key.substring(key.indexOf('_') + 1)
         unbakedMethods.push({
             name,
             type,
@@ -226,17 +226,26 @@ export class NativeMethods {
         return Value.void
     }
 
+    @NativeMethod('void',['int index','T value'],[],'add')
+    array_addat(r: Runtime, arr: Value, index: Value, val: Value) {
+        if (index.inner > arr.inner.length) {
+            throw new SplashRuntimeError(`Array index out of range for adding a value. Index: ${index.inner}, Length: ${arr.inner.length}`)
+        }
+        (arr.inner as Value[]).splice(index.inner,0,val)
+        return Value.void
+    }
+
     @NativeMethod('string')
     array_toString(r: Runtime, arr: Value) {
         return new Value(SplashString.instance,'[' + (arr.inner as Value[]).map(v=>v.toString(r)).join(', ') + ']')
     }
 
-    @NativeMethod('T')
-    array_pop(r: Runtime, arr: Value) {
-        if (arr.inner.length == 0) {
-            throw new SplashRuntimeError('Cannot pop() a value from an empty array')
+    @NativeMethod('T',['int index'])
+    array_remove(r: Runtime, arr: Value, index: Value) {
+        if (arr.inner.length <= index.inner) {
+            throw new SplashRuntimeError('array.remove() is out of bounds. Length: ' + arr.inner.length + ', Index: ' + index.inner)
         }
-        return arr.inner.pop()
+        return (arr.inner as []).splice(index.inner,1)
     }
 
     @NativeMethod('int',[],[Modifier.get])
@@ -247,11 +256,6 @@ export class NativeMethods {
     @NativeMethod('void')
     array_clear(r: Runtime, arr: Value) {
         arr.inner = []
-    }
-
-    @NativeMethod('boolean',[],[Modifier.get])
-    array_isEmpty(r: Runtime, arr: Value) {
-        return new Value(SplashBoolean.instance,arr.inner.length == 0)
     }
 
     @NativeMethod('this',['this def'],[Modifier.operator])

@@ -13,8 +13,9 @@ export class Processor {
     types: SplashType[] = []
     rawFunctions: FunctionNode[] = []
     functions: SplashFunction[] = []
-    currentClass: SplashType | undefined
-    currentFunction: SplashFunction | Method | undefined
+    currentFile?: string
+    currentClass?: SplashType
+    currentFunction?: SplashFunction | Method
     hasReturn = false
     hasErrors = false
     silent = false
@@ -35,19 +36,15 @@ export class Processor {
         this.functions.push(...script.functions)
     }
 
-    importAST(ast: RootNode) {
-        this.types.push(...ast.classes.map(c=>c.type))
-        this.rawFunctions.push(...ast.functions)
-    }
-
     process(ast: RootNode) {
+        this.currentFile = ast.file
         ast.process(this)
     }
     
 
     error(range: TextRange, msg: string) {
         if (!this.silent) {
-            console.log("Validation error at " + TextRange.toString(range) + ": " + msg)
+            console.log("Validation error in " + this.currentFile + " at " + TextRange.toString(range) + ": " + msg)
             this.hasErrors = true
         } else {
             console.log('skipped error, processor is silent (',msg,')')
@@ -83,16 +80,13 @@ export class Processor {
 
     getFunctionType(name: string): SplashType | undefined {
         if (this.currentClass) {
-            for (let m of this.currentClass.methods) {
-                if (m.name == name) return m.resolveFunctionType(this.currentClass)
-            }
+            let funcs = this.currentClass.methods.filter(m=>m.name == name).map(m=>m.resolveFunctionType(this.currentClass || SplashClass.object))
+            if (funcs.length > 0) return SplashType.combine(funcs)
         }
-        for (let f of this.functions) {
-            if (f.name == name) return f.toFunctionType()
-        }
-        for (let f of this.rawFunctions) {
-            if (f.name.value == name) return f.toFunctionType(this)
-        }
+        let funcs = this.functions.filter(f=>f.name == name).map(f=>f.toFunctionType())
+        if (funcs.length > 0) return SplashType.combine(funcs)
+        let rfuncs = this.rawFunctions.filter(f=>f.name.value == name).map(f=>f.toFunctionType(this))
+        if (rfuncs.length > 0) return SplashType.combine(rfuncs)
     }
 
     resolveType(token: TypeToken): SplashType {

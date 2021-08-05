@@ -201,6 +201,38 @@ export class BaseTokenizer implements Tokenizer {
             case '"':
             case '\'':
                 return this.readString(start,c)
+            case '#':
+                let comment = '';
+                while (this.canRead()) {
+                    c = this.nextChar()
+                    if (c == '\n') {
+                        this.pos--
+                        this.column--
+                        break
+                    }
+                    comment += c
+                }
+                return new Token(TokenType.comment, comment, {start, end: this.getPos()})
+            case '/':
+                let blockComment = '';
+                let next = this.nextChar();
+                if (next == '*') {
+                    while (this.canRead()) {
+                        next = this.nextChar()
+                        if (next == '*') {
+                            next = this.nextChar()
+                            if (next == '/') {
+                                break
+                            }
+                            blockComment += '*' + next
+                        } else {
+                            blockComment += next
+                        }
+                    }
+                    return new Token(TokenType.comment, blockComment, {start, end: this.getPos()})
+                }
+                this.column--
+                this.pos--
             default:
                 if (/[0-9]/.test(c)) {
                     return this.readNumber(start, c)

@@ -1,7 +1,7 @@
 
 main {
-    var name = "Yaniv"
-    var age = 19
+    var name = readLine("What is your name? ")
+    var age = readInt("And your age? ")
 
     if (age < 18) {
         print("You are katin")

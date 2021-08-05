@@ -19,7 +19,7 @@ export class RootNode extends ASTNode {
     main?: MainBlock
     functions: FunctionNode[] = []
 
-    constructor() {
+    constructor(public file: string) {
         super("root")
     }
 
@@ -30,6 +30,15 @@ export class RootNode extends ASTNode {
             this.functions.push(node)
         } else if (node instanceof MainBlock) {
             this.main = node
+        }
+    }
+
+    index(proc: Processor) {
+        for (let c of this.classes) {
+            c.index(proc)
+        }
+        for (let f of this.functions) {
+            f.index(proc)
         }
     }
 
@@ -47,8 +56,8 @@ export class RootNode extends ASTNode {
         }
     }
 
-    generate(proc: Processor, file: string): SplashScript {
-        let script = new SplashScript(file)
+    generate(proc: Processor): SplashScript {
+        let script = new SplashScript(this.file)
         script.main = this.main?.generate(proc)
         script.classes.push(...this.classes.map(c=>c.generate(proc)))
         script.functions.push(...this.functions.map(f=>f.generate(proc)))
@@ -156,9 +165,41 @@ export class ExpressionList {
 
     }
 
-    canApplyTo(proc: Processor, parameters: Parameter[]) {
-        // todo: add specific errors for what cannot be applied
-        return Parameter.allParamsMatch(parameters, this.values.map(v=>v.getResultType(proc)))
+    canApplyTo(proc: Processor, parameters: Parameter[], reportErrors: boolean) {
+        if (!reportErrors) {
+            return Parameter.allParamsMatch(parameters, this.values.map(v=>v.getResultType(proc)))
+        }
+        let successful = true
+        let matchCount = 0;
+        for (let i = 0; i < parameters.length; i++) {
+            let p = parameters[i]
+            if (i < this.values.length) {
+                if (p.vararg) {
+                    let rest = this.values.slice(i)
+                    let allMatch = rest.every(r=>r.getResultType(proc).canAssignTo((p.type as SplashParameterizedType).params[0]))
+                    if (!allMatch) {
+                        successful = false
+                        proc.error(TextRange.between(rest[0].range,rest[rest.length-1].range),'Vararg values types do not all match ' + p.type)
+                    }
+                } else {
+                    let type = this.values[i].getResultType(proc);
+                    if (!type.canAssignTo(p.type)) {
+                        successful = false
+                        proc.error(this.values[i].range,'Argument ' + type + ' cannot be assigned to parameter ' + p.type)
+                    }
+                }
+                matchCount++
+            } else if (!(p.type instanceof SplashOptionalType) && !p.hasDefValue) {
+                successful = false
+                proc.error(this.range,' Missing required parameter ' + p.type)
+            }
+        }
+        if (!successful) return false
+        let match = matchCount == this.values.length;
+        if (!match) {
+            proc.error(this.range, 'Mismatched argument count provided, expected ' + parameters.length)
+        }
+        return match
     }
 
     generate(proc: Processor) {
@@ -356,7 +397,7 @@ export class VariableAccess extends AssignableExpression {
         let func = proc.getFunctionType(this.name.value)
         if (v) {
             if (func) {
-                return new SplashComboType([v.type,func])
+                return SplashType.combine([v.type, func])
             }
             return v.type
         } else if (func) {
@@ -383,28 +424,27 @@ export class CallAccess extends Expression {
     getResultType(proc: Processor): SplashType {
         let res = this.parent.getResultType(proc)
         if (res instanceof SplashFunctionType) {
-            if (this.params.canApplyTo(proc,res.params)) {
+            if (this.params.canApplyTo(proc,res.params,true)) {
                 return res.retType
             }
-            proc.error(this.range,"Mismatched parameter types") // todo: improve this error message
             return SplashClass.object
         } else if (res instanceof SplashComboType) {
-            let hadFunc = false
+            let errFunc: SplashFunctionType | undefined
             for (let option of res.types) {
                 if (option instanceof SplashFunctionType) {
-                    if (this.params.canApplyTo(proc,option.params)) {
+                    if (this.params.canApplyTo(proc,option.params,false)) {
                         return option.retType
                     }
-                    hadFunc = true
+                    errFunc = option
                 }
             }
-            if (hadFunc) {
-                proc.error(this.range,"Mismatched parameter types") // todo: improve this error message
+            if (errFunc) {
+                this.params.canApplyTo(proc,errFunc.params,true)
                 return SplashClass.object
             }
         }
         if (res instanceof SplashClassType) {
-            if (!res.constructors.find(c=>this.params.canApplyTo(proc,c.params))) {
+            if (!res.constructors.find(c=>this.params.canApplyTo(proc,c.params,false))) {
                 proc.error(this.range,"No constructor of " + res + " found taking these parameters")
             }
             return res.type
@@ -539,11 +579,14 @@ export class TypeParameterNode extends ASTNode {
         super('type_parameter')
     }
 
-    process(proc: Processor, index: number) {
+    init(proc: Processor, index: number) {
+        this.param = new TypeParameter(this.base.value, index, this.extend ? proc.resolveType(this.extend) : undefined)
+    }
+
+    process(proc: Processor) {
         if (this.extend) {
             proc.validateType(this.extend)
         }
-        this.param = new TypeParameter(this.base.value, index, this.extend ? proc.resolveType(this.extend) : undefined)
     }
     
 }
@@ -586,6 +629,10 @@ export class FunctionNode extends ASTNode {
     
     constructor(public label: TextRange, public modifiers: ModifierList, public name: Token, public retType: TypeToken, public params: ParameterNode[], public code?: CodeBlock) {
         super('function')
+    }
+
+    index(proc: Processor) {
+        proc.rawFunctions.push(this)
     }
 
     process(proc: Processor) {
@@ -724,13 +771,7 @@ export class MethodNode extends ClassMember {
         
         this.method = new Method(this.name.value, proc.resolveType(this.retType), processedParams, this.modifiers)
         let existing = type.declaredMethods.find(m=>m.name == this.name.value && Parameter.allParamsMatch(m.params,processedParams.map(p=>p.type)))
-        if (existing) {
-            if (!this.modifiers.has(Modifier.native)) {
-                proc.error(this.name.range, "Duplicate method '" + this.name.value + "'")
-            }
-        } else if (this.modifiers.has(Modifier.native)) {
-            proc.error(this.name.range, "Native method " + this.name.value + " is not implemented")
-        } else {
+        if (!existing) {
             type.addMember(this.method)
             console.log('added method',this.name.value,'to',type.toString())
         }
@@ -798,17 +839,32 @@ export class ClassDeclaration extends ASTNode {
         }
     }
 
-    process(proc: Processor): void {
+    index(proc: Processor) {
         if (!this.modifiers.has(Modifier.native)) {
             proc.types.push(this.type)
         }
+
+        let index = 0;
+        for (let tp of this.typeParams) {
+            tp.init(proc,index)
+            if (tp.param) {
+                this.type.typeParams.push(tp.param)
+            }
+            index++;
+        }
+
+        for (let m of this.body) {
+            m.index(proc, this.type)
+        }
+    }
+
+    process(proc: Processor): void {
         proc.currentClass = this.type
         proc.push()
 
         let uniqueTP: string[] = []
-        let index = 0;
         for (let tp of this.typeParams) {
-            tp.process(proc,index)
+            tp.process(proc)
             if (tp.param) {
                 this.type.typeParams.push(tp.param)
             }
@@ -817,13 +873,8 @@ export class ClassDeclaration extends ASTNode {
             } else {
                 uniqueTP.push(tp.base.value)
             }
-            index++
         }
 
-        for (let m of this.body) {
-            m.index(proc, this.type)
-        }
-        
         for (let m of this.body) {
             m.process(proc)
         }

@@ -105,7 +105,10 @@ export class Method extends ClassExecutable {
     }
 
     resolveFunctionType(ownerType: SplashType) {
-        return new SplashFunctionType(this.retType.resolve(ownerType),this.params.map(p=>p.resolve(ownerType)))
+        if (this.type instanceof SplashFunctionType) {
+            return new SplashFunctionType(this.retType.resolve(ownerType),this.params.map(p=>p.resolve(ownerType)))
+        }
+        return this.retType.resolve(ownerType)
     }
 
     invoke(runtime: Runtime, inType: SplashType, thisArg?: Value, ...params: Value[]): Value {

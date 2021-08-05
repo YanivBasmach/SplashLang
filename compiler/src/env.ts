@@ -16,7 +16,7 @@ export function initNatives() {
 
 export function compileModule(path: string, sdk?: SplashModule) {
     let module = new SplashModule(paths.normalize(path))
-    let asts: {[file: string]: RootNode} = {}
+    let asts: RootNode[] = []
 
     let proc = new Processor()
 
@@ -29,14 +29,17 @@ export function compileModule(path: string, sdk?: SplashModule) {
             let fp = paths.join(path,f)
             let ast = parseFile(fp)
             if (ast) {
-                asts[f] = ast
-                proc.importAST(ast)
+                asts.push(ast)
             }
         }
     }
 
-    for (let e of Object.entries(asts)) {
-        let script = processAndGenerate(proc,e[1],e[0])
+    for (let ast of asts) {
+        ast.index(proc)
+    }
+
+    for (let ast of asts) {
+        let script = processAndGenerate(proc,ast)
         if (script) {
             module.scripts.push(script)
         } else {
@@ -54,7 +57,8 @@ export function compileFile(file: string, sdk: SplashModule): SplashScript | und
         if (sdk) {
             proc.import(sdk)
         }
-        let script = processAndGenerate(proc,root,file)
+        root.index(proc)
+        let script = processAndGenerate(proc,root)
         return script
     }
     return
@@ -75,8 +79,8 @@ export function parseFile(file: string): RootNode | undefined {
     return parser.hasErrors ? undefined : root
 }
 
-export function processAndGenerate(proc: Processor, ast: RootNode, file: string) {
-    console.log('processing...')
+export function processAndGenerate(proc: Processor, ast: RootNode) {
+    console.log('processing ' + ast.file + '...')
     console.time('processing done')
     
     proc.process(ast)
@@ -85,7 +89,7 @@ export function processAndGenerate(proc: Processor, ast: RootNode, file: string)
     if (!proc.hasErrors) {
         console.log('generating...')
         console.time('generation done')
-        let generated = ast.generate(proc,file)
+        let generated = ast.generate(proc)
         console.timeEnd('generation done')
         return generated
     }

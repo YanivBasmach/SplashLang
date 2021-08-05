@@ -4,7 +4,6 @@ import { ExpressionList } from "./ast"
 import { Constructor, Field, Member, Method, Parameter, Value } from "./oop"
 import { BinaryOperator, getOpMethodName, Modifier, UnaryOperator } from "./operators"
 import { Processor } from "./processor"
-import { Runtime } from "./runtime"
 
 export abstract class SplashType {
 
@@ -85,7 +84,7 @@ export abstract class SplashType {
 
     getInvoker(proc: Processor, params: ExpressionList): Method | undefined {
         for (let m of this.methods) {
-            if (m.modifiers.has(Modifier.invoker) && params.canApplyTo(proc,m.params)) {
+            if (m.modifiers.has(Modifier.invoker) && params.canApplyTo(proc,m.params,false)) {
                 return m
             }
         }
@@ -129,6 +128,21 @@ export abstract class SplashType {
 
     resolve(ownerType: SplashType): SplashType {
         return this
+    }
+
+    static combine(types: SplashType[]) {
+        if (types.length == 1) {
+            return types[0]
+        }
+        let flat: SplashType[] = []
+        for (let t of types) {
+            if (t instanceof SplashComboType) {
+                flat.push(...t.types)
+            } else {
+                flat.push(t)
+            }
+        }
+        return new SplashComboType(flat)
     }
 
     toString() {

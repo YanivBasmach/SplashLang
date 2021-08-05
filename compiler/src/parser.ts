@@ -156,7 +156,7 @@ export class Parser {
      * Parses an entire splash file and creates an AST (Abstract Syntax Tree)
      */
     parseFile(): RootNode {
-        let root = new RootNode()
+        let root = new RootNode(this.file)
 
         while (this.hasNext()) {
             if (this.isNext(TokenType.line_end)) {
