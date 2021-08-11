@@ -11,6 +11,15 @@ main {
         print("Damn your'e old!")
     }
 
+    print(5 + 1.4 * 2)
+    print(10 * 1.2)
+    print(5 / 2)
+    print(5 // 2)
+    print(4 ** 2 + 1)
+    print(0.1 + 0.2)
+    #print("Hello ".repeat(5))
+    print("World " * 5)
+
     var p = Person(name, age)
 
     print("Hello {p.name}! This is Splash.")

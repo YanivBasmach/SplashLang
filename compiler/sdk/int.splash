@@ -4,23 +4,35 @@ native class int {
     native static int parse(string value)
 
     native operator int plus(int other)
+    native operator float plus(float other)
 
     native operator int minus(int other)
+    native operator float minus(float other)
+
+    native operator int mul(int other)
+    native operator float mul(float other)
+
+    native operator float div(int | float other)
+
+    native operator int int_div(int | float other)
+
+    native operator int mod(int | float divisor)
+
+    native operator int pow(int other)
+    native operator float pow(float other)
+    
+    operator int compare(int | float other) {
+        return this - other
+    }
+
+    native operator int negative()
 
     boolean isOdd() {
         return this % 2 != 0
     }
-    native operator int mod(int other)
-
-    operator int compare(int other) {
-        return this - other
-    }
-
+    
     boolean isPrime() {
 
     }
-
-    native operator int negative()
-    
     
 }

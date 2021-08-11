@@ -7,18 +7,14 @@ import { Processor } from "./processor"
 import { RootNode } from "./ast"
 import { NativeFunctions, NativeMethods } from "./native"
 
-export function initNatives() {
-    let proc = new Processor()
-
-    NativeFunctions.init(proc)
-    NativeMethods.init(proc)
-}
 
 export function compileModule(path: string, sdk?: SplashModule) {
     let module = new SplashModule(paths.normalize(path))
     let asts: RootNode[] = []
 
     let proc = new Processor()
+    NativeFunctions.init(proc)
+    NativeMethods.init(proc)
 
     if (sdk) {
         proc.import(sdk)

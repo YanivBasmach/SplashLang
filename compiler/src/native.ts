@@ -4,7 +4,6 @@ import { Runtime, SplashRuntimeError } from "./runtime";
 import { BuiltinTypes, SplashBoolean, SplashClass, SplashClassType, SplashInt, SplashString, SplashType } from "./types";
 import { ModifierList } from "./ast";
 import { Processor } from "./processor";
-import prompt from 'prompt-sync'
 
 interface UnbakedNativeFunction {
     name: string
@@ -159,8 +158,7 @@ export class NativeMethods {
         }
     }
 
-    
-
+    // STRING
     @NativeMethod('string')
     string_toLowerCase(r: Runtime, val: Value) {
         return new Value(SplashString.instance,val.inner.toLowerCase())
@@ -176,19 +174,60 @@ export class NativeMethods {
         return new Value(SplashString.instance,val.inner.split(""))
     }
 
+
+    // INT
     @NativeMethod('int',['int other'],[Modifier.operator])
     int_plus(r: Runtime, val: Value, other: Value) {
-        return new Value(BuiltinTypes.boolean,val.inner + other.inner)
+        return new Value(BuiltinTypes.int,val.inner + other.inner)
+    }
+    @NativeMethod('float',['float other'],[Modifier.operator],'plus')
+    int_fplus(r: Runtime, val: Value, other: Value) {
+        return new Value(BuiltinTypes.float,val.inner + other.inner)
     }
 
     @NativeMethod('int',['int other'],[Modifier.operator])
     int_minus(r: Runtime, val: Value, other: Value) {
-        return new Value(BuiltinTypes.boolean,val.inner - other.inner)
+        return new Value(BuiltinTypes.int,val.inner - other.inner)
+    }
+
+    @NativeMethod('float',['float other'],[Modifier.operator],'minus')
+    int_fminus(r: Runtime, val: Value, other: Value) {
+        return new Value(BuiltinTypes.float,val.inner - other.inner)
     }
 
     @NativeMethod('int',['int other'],[Modifier.operator])
+    int_mul(r: Runtime, val: Value, other: Value) {
+        return new Value(BuiltinTypes.int,val.inner * other.inner)
+    }
+
+    @NativeMethod('float',['float other'],[Modifier.operator],'mul')
+    int_fmul(r: Runtime, val: Value, other: Value) {
+        return new Value(BuiltinTypes.float,val.inner * other.inner)
+    }
+
+    @NativeMethod('float',['int | float other'],[Modifier.operator])
+    int_div(r: Runtime, val: Value, other: Value) {
+        return new Value(BuiltinTypes.float,val.inner / other.inner)
+    }
+
+    @NativeMethod('int',['int | float other'],[Modifier.operator])
+    int_int_div(r: Runtime, val: Value, other: Value) {
+        return new Value(BuiltinTypes.int,Math.floor(val.inner / other.inner))
+    }
+
+    @NativeMethod('int',['int | float other'],[Modifier.operator])
     int_mod(r: Runtime, val: Value, other: Value) {
         return new Value(BuiltinTypes.int,val.inner % other.inner)
+    }
+
+    @NativeMethod('int',['int other'],[Modifier.operator])
+    int_pow(r: Runtime, val: Value, other: Value) {
+        return new Value(BuiltinTypes.int,Math.pow(val.inner, other.inner))
+    }
+
+    @NativeMethod('float',['float other'],[Modifier.operator],'pow')
+    int_fpow(r: Runtime, val: Value, other: Value) {
+        return new Value(BuiltinTypes.float,Math.pow(val.inner,other.inner))
     }
 
     @NativeMethod('int',[],[Modifier.operator])
@@ -201,11 +240,69 @@ export class NativeMethods {
         return new Value(SplashInt.instance, parseInt(str.inner))
     }
 
+    // FLOAT
+    @NativeMethod('float',['int | float other'],[Modifier.operator])
+    float_plus(r: Runtime, val: Value, other: Value) {
+        return new Value(BuiltinTypes.float,val.inner + other.inner)
+    }
+
+    @NativeMethod('float',['int | float other'],[Modifier.operator])
+    float_minus(r: Runtime, val: Value, other: Value) {
+        return new Value(BuiltinTypes.float,val.inner - other.inner)
+    }
+    
+    @NativeMethod('float',['int | float other'],[Modifier.operator])
+    float_mul(r: Runtime, val: Value, other: Value) {
+        return new Value(BuiltinTypes.float,val.inner * other.inner)
+    }
+
+    @NativeMethod('float',['int | float other'],[Modifier.operator])
+    float_div(r: Runtime, val: Value, other: Value) {
+        return new Value(BuiltinTypes.float,val.inner / other.inner)
+    }
+
+    @NativeMethod('int',['int | float other'],[Modifier.operator])
+    float_int_div(r: Runtime, val: Value, other: Value) {
+        return new Value(BuiltinTypes.int,Math.floor(val.inner / other.inner))
+    }
+
+    @NativeMethod('float',['int | float other'],[Modifier.operator])
+    float_mod(r: Runtime, val: Value, other: Value) {
+        return new Value(BuiltinTypes.float,val.inner % other.inner)
+    }
+
+    @NativeMethod('float',['int | float other'],[Modifier.operator])
+    float_pow(r: Runtime, val: Value, other: Value) {
+        return new Value(BuiltinTypes.float,Math.pow(val.inner, other.inner))
+    }
+
+    @NativeMethod('float',[],[Modifier.operator])
+    float_negative(r: Runtime, val: Value) {
+        return new Value(SplashInt.instance, -val.inner)
+    }
+
+    @NativeMethod('float',['string value'],[Modifier.static])
+    float_parse(r: Runtime, _: Value, str: Value) {
+        return new Value(SplashInt.instance, parseFloat(str.inner))
+    }
+
+    // BOOLEAN
     @NativeMethod('boolean',[],[Modifier.operator])
     boolean_not(r: Runtime, val: Value) {
         return new Value(BuiltinTypes.boolean,!val.inner)
     }
 
+    @NativeMethod('boolean',['boolean other'],[Modifier.operator])
+    boolean_or(r: Runtime, val: Value, other: Value) {
+        return new Value(BuiltinTypes.boolean, val.inner || other.inner)
+    }
+
+    @NativeMethod('boolean',['boolean other'],[Modifier.operator])
+    boolean_and(r: Runtime, val: Value, other: Value) {
+        return new Value(BuiltinTypes.boolean, val.inner && other.inner)
+    }
+
+    // ARRAY
     @NativeMethod('T',['int index'],[Modifier.get,Modifier.indexer])
     array_indexer(r: Runtime, arr: Value, index: Value) {
         let i: number
@@ -258,6 +355,7 @@ export class NativeMethods {
         arr.inner = []
     }
 
+    // OBJECT
     @NativeMethod('this',['this def'],[Modifier.operator])
     object_default(r: Runtime, val: Value, other: Value) {
         return val.isNull ? other : val

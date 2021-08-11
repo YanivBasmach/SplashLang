@@ -10,7 +10,6 @@ export class Runtime {
 
     currentType: SplashType | undefined
     currentInstance: Value | undefined
-    returnValue: Value | undefined
     
     variables: {[name: string]: Value} = {}
     types: SplashType[] = []
@@ -119,7 +118,7 @@ export class Runtime {
 
 
 export class Returned extends Error {
-    constructor() {
+    constructor(public value: Value) {
         super('returned')
 
         Object.setPrototypeOf(this, Returned.prototype);

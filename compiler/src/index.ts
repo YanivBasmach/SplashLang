@@ -1,8 +1,6 @@
 
-import { compileFile, compileModule, initNatives } from './env'
+import { compileFile, compileModule } from './env'
 import { Runtime } from './runtime'
-
-initNatives()
 
 const sdk = compileModule('./sdk')
 

@@ -18,6 +18,22 @@ native class string {
         return length == 0
     }
 
+    operator string plus(object obj) {
+        return "{this}{obj}"
+    }
+    
+    string repeat(int times) {
+        var res = ""
+        repeat (times) {
+            res += this
+        }
+        return res
+    }
+
+    operator string mul(int times) {
+        return repeat(times)
+    }
+
     /*
     int? indexOf(string substr) {
         if (substr.isEmpty) return -1
@@ -45,14 +61,6 @@ native class string {
 
     boolean contains(string substr) {
         return indexOf(substr)
-    }
-
-    string repeat(int times) {
-        var res = ""
-        repeat (times) {
-            res += this
-        }
-        return res
     }
 
     string substring(int startIndex, int? endIndex) {

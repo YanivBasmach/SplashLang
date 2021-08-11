@@ -2,7 +2,7 @@ import { Expression } from "./ast";
 import { NativeFunctions } from "./native";
 import { Parameter, Value } from "./oop";
 import { AssignmentOperator, BinaryOperator, UnaryOperator } from "./operators";
-import { SplashArray, SplashClass, SplashComboType, SplashFunctionType, SplashInt, SplashOptionalType, SplashString, SplashType } from "./types";
+import { SplashArray, SplashBoolean, SplashClass, SplashComboType, SplashFloat, SplashFunctionType, SplashInt, SplashOptionalType, SplashString, SplashType } from "./types";
 import { Returned, Runtime, SplashRuntimeError } from "./runtime";
 import { TokenType } from "./tokenizer";
 
@@ -32,7 +32,7 @@ export class GeneratedBlock extends GeneratedStatement {
             }
         } catch (e) {
             if (e instanceof Returned) {
-                //console.log("Returned");
+                throw e
             } else if (e instanceof SplashRuntimeError) {
                 console.log("Runtime Error:",e.message)
             } else {
@@ -97,8 +97,15 @@ export class SplashFunction {
                     r.setVariable(p.name,pv)
                 }
             }
-            this.body.run(r)
-            return r.returnValue || Value.void
+            try {
+                this.body.run(r)
+            } catch (e) {
+                if (e instanceof Returned) {
+                    return e.value
+                }
+            }
+            
+            return Value.void
         } else {
             return NativeFunctions.invoke(r, this.name, params)
         }
@@ -288,6 +295,11 @@ export class GeneratedLiteral extends GeneratedExpression {
                 return new Value(SplashInt.instance, parseInt(this.value))
             case TokenType.string:
                 return new Value(SplashString.instance, this.value)
+            case TokenType.float:
+                return new Value(SplashFloat.instance, parseFloat(this.value))
+        }
+        if (this.value == 'true' || this.value == 'false') {
+            return new Value(SplashBoolean.instance, this.value == 'true')
         }
         return Value.null
     }
@@ -342,8 +354,7 @@ export class GeneratedReturn extends GeneratedStatement {
         super()
     }
     run(runtime: Runtime): void {
-        runtime.returnValue = this.expr?.evaluate(runtime)
-        throw new Returned()
+        throw new Returned(this.expr?.evaluate(runtime) || Value.void)
     }
     
 }
@@ -365,6 +376,21 @@ export class GenConstExpression extends GeneratedExpression {
 
     evaluate(runtime: Runtime): Value {
         return this.value
+    }
+    
+}
+
+export class GeneratedRepeat extends GeneratedStatement {
+    constructor(public expr: GeneratedExpression, public then: GeneratedStatement) {
+        super()
+    }
+    run(runtime: Runtime): void {
+        let times = this.expr.evaluate(runtime)
+        if (times.type.canAssignTo(SplashInt.instance)) {
+            for (let i = 0; i < times.inner; i++) {
+                this.then.run(runtime)
+            }
+        }
     }
     
 }

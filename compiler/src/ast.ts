@@ -1,10 +1,10 @@
-import { GenArrayCreation, GenAssignableExpression, GenAssignment, GenCall, GenCallAccess, GenClassDecl, GenConstExpression, Generated, GeneratedBinary, GeneratedBlock, GeneratedExpression, GeneratedLiteral, GeneratedReturn, GeneratedStatement, GeneratedUnary, GenFieldAccess, SplashFunction, GenIfStatement, GenStringLiteral, GenVarAccess, GenVarDeclaration, SplashScript, GenIndexAccess } from "./generator";
+import { GenArrayCreation, GenAssignableExpression, GenAssignment, GenCall, GenCallAccess, GenClassDecl, GenConstExpression, Generated, GeneratedBinary, GeneratedBlock, GeneratedExpression, GeneratedLiteral, GeneratedReturn, GeneratedStatement, GeneratedUnary, GenFieldAccess, SplashFunction, GenIfStatement, GenStringLiteral, GenVarAccess, GenVarDeclaration, SplashScript, GenIndexAccess, GeneratedRepeat } from "./generator";
 import { ExpressionSegment, StringToken, TextRange, Token, TokenType } from "./tokenizer";
 import { Parser } from "./parser";
 import { Constructor, CtorParameter, Field, Member, Method, Parameter, TypeToken, Value } from "./oop";
 import { Processor } from "./processor";
 import { AssignmentOperator, BinaryOperator, getActualOpReturnType, getOpMethodName, Modifier, UnaryOperator } from "./operators";
-import { BuiltinTypes, DummySplashType, SplashArray, SplashBoolean, SplashClass, SplashClassType, SplashComboType, SplashFunctionType, SplashInt, SplashOptionalType, SplashParameterizedType, SplashString, SplashType, TypeParameter } from "./types";
+import { BuiltinTypes, DummySplashType, SplashArray, SplashBoolean, SplashClass, SplashClassType, SplashComboType, SplashFloat, SplashFunctionType, SplashInt, SplashOptionalType, SplashParameterizedType, SplashString, SplashType, TypeParameter } from "./types";
 
 
 export abstract class ASTNode {
@@ -260,8 +260,13 @@ export class LiteralExpression extends Expression {
         switch (this.token.type) {
             case TokenType.int:
                 return SplashInt.instance
+            case TokenType.float:
+                return SplashFloat.instance
             case TokenType.string:
                 return SplashString.instance
+        }
+        if (this.token.value == 'true' || this.token.value == 'false') {
+            return SplashBoolean.instance
         }
         return SplashClass.object
     }
@@ -1054,4 +1059,21 @@ export class ThisAccess extends Expression {
         return new GenVarAccess('this')
     }
     
+}
+
+export class RepeatStatement extends Statement {
+    
+    constructor(label: Token, public expr: Expression, public run: Statement) {
+        super('repeat',label.range)
+    }
+
+    process(proc: Processor): void {
+        let type = this.expr.getResultType(proc)
+        if (!type.canAssignTo(SplashInt.instance)) {
+            proc.error(this.expr.range,"Int expression expected")
+        }
+    }
+    generate(proc: Processor): GeneratedStatement {
+        return new GeneratedRepeat(this.expr.generate(proc),this.run.generate(proc))
+    }
 }

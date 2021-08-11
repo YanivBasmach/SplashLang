@@ -24,4 +24,7 @@ native class boolean {
     
     native operator boolean not()
 
+    native operator boolean and(boolean other)
+    native operator boolean or(boolean other)
+
 }

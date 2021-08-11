@@ -112,13 +112,17 @@ export abstract class SplashType {
     }
 
     canAssignTo(type: SplashType): boolean {
+        if (this == type) return true
+        if (type == SplashClass.object) return true
+        
         if (type instanceof SelfSplashType) {
             return this.canAssignTo(type.base)
         }
-        if (type == SplashClass.object) return true
-        if (this == type) return true
         if (type instanceof SplashOptionalType) {
             return this == type.inner
+        }
+        if (type instanceof SplashComboType) {
+            return type.types.some(t=>this.canAssignTo(t))
         }
         if (type instanceof SplashParameterizedType) {
             return this.canAssignTo(type.base)
@@ -199,6 +203,18 @@ export class SplashInt extends SplashPrimitive {
     }
     
 }
+
+
+export class SplashFloat extends SplashPrimitive {
+    
+    static instance = new SplashFloat('float')
+    
+    get defaultValue(): Value {
+        return new Value(this, 0.0)
+    }
+    
+}
+
 
 export class SplashArray extends SplashPrimitive {
 
@@ -378,6 +394,7 @@ export const BuiltinTypes: {[name: string]: SplashType} = {
     array: SplashArray.instance,
     boolean: SplashBoolean.instance,
     object: SplashClass.object,
+    float: SplashFloat.instance,
     null: DummySplashType.null,
     void: DummySplashType.void
 }

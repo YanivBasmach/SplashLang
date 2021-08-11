@@ -1,7 +1,7 @@
 import { ExpressionList, ModifierList, ParameterNode, RootNode } from "./ast";
 import { GeneratedBlock, GeneratedExpression, SplashScript } from "./generator";
 import { BinaryOperator, Modifier, transformOperatorResult, UnaryOperator } from "./operators";
-import { Runtime } from "./runtime";
+import { Returned, Runtime } from "./runtime";
 import { BaseTokenizer, TextRange, Token } from "./tokenizer";
 import { DummySplashType, SplashClass, SplashClassType, SplashFunctionType, SplashOptionalType, SplashParameterizedType, SplashPrimitive, SplashString, SplashType } from "./types";
 import { NativeFunctions, NativeMethods } from "./native";
@@ -122,12 +122,17 @@ export class Method extends ClassExecutable {
         }
         if (this.body) {
             Parameter.initParams(r,this.params,params)
-            this.body.run(r)
-            return r.returnValue || Value.void
+            try {
+                this.body.run(r)
+            } catch (e) {
+                if (e instanceof Returned) {
+                    return e.value
+                }
+            }
+            return Value.void
         } else {
             return NativeMethods.invoke(r, inType, this.name, params, thisArg)
         }
-        
     }
 
     get isStatic() {
