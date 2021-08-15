@@ -2,7 +2,7 @@
 
 import { ExpressionList } from "./ast"
 import { Constructor, Field, Member, Method, Parameter, Value } from "./oop"
-import { BinaryOperator, getOpMethodName, Modifier, UnaryOperator } from "./operators"
+import { BinaryOperator, getOpMethodName, isBidirectional, Modifier, UnaryOperator } from "./operators"
 import { Processor } from "./processor"
 
 export abstract class SplashType {
@@ -106,6 +106,14 @@ export abstract class SplashType {
         }
     }
 
+    getIterator() {
+        for (let m of this.methods) {
+            if (m.modifiers.has(Modifier.iterator) && m.params.length == 0) {
+                return m
+            }
+        }
+    }
+
     getValidMethod(name: string, ...params: SplashType[]) {
         return this.getMethods(name)
             .filter(m=>Parameter.allParamsMatch(m.params.map(p=>p.resolve(this)),params))[0]
@@ -124,8 +132,11 @@ export abstract class SplashType {
         if (type instanceof SplashComboType) {
             return type.types.some(t=>this.canAssignTo(t))
         }
-        if (type instanceof SplashParameterizedType) {
+        /* if (type instanceof SplashParameterizedType) {
             return this.canAssignTo(type.base)
+        } */
+        if (this instanceof SplashParameterizedType) {
+            return this.base.canAssignTo(type)
         }
         return false
     }

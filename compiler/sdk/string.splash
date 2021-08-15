@@ -6,6 +6,8 @@ native class string {
 
     native string[] chars()
 
+    native operator string sub(int chars)
+
     get indexer string(int index) {
         return chars()[index]
     }
@@ -18,20 +20,12 @@ native class string {
         return length == 0
     }
 
-    operator string plus(object obj) {
-        return "{this}{obj}"
-    }
-    
-    string repeat(int times) {
+    operator string mul(int times) {
         var res = ""
         repeat (times) {
             res += this
         }
         return res
-    }
-
-    operator string mul(int times) {
-        return repeat(times)
     }
 
     /*

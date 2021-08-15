@@ -264,7 +264,7 @@ export class GenAssignment extends GeneratedStatement {
             toAssign = val
         } else {
             let self = this.variable.evalSelf(runtime)
-            toAssign = self.invokeBinOperator(runtime, this.op.substring(1) as BinaryOperator, val)
+            toAssign = self.invokeBinOperator(runtime, this.op.substring(0,this.op.length-1) as BinaryOperator, val)
         }
         if (!(toAssign.type instanceof SplashOptionalType)) {
             this.variable.assign(runtime, parent, toAssign)
@@ -390,6 +390,28 @@ export class GeneratedRepeat extends GeneratedStatement {
             for (let i = 0; i < times.inner; i++) {
                 this.then.run(runtime)
             }
+        }
+    }
+    
+}
+
+export class GeneratedFor extends GeneratedStatement {
+
+    constructor(public varname: string, public iter: GeneratedExpression, public then: GeneratedStatement) {
+        super()
+    }
+
+    run(runtime: Runtime): void {
+        runtime.declareVariable(this.varname)
+        let iterated = this.iter.evaluate(runtime)
+        let arr = iterated.invokeIterator(runtime)
+        if (arr.type.canAssignTo(SplashArray.instance)) {
+            for (let val of arr.inner) {
+                runtime.setVariable(this.varname,val)
+                this.then.run(runtime)
+            }
+        } else {
+            console.log('value returned from iterator is not an array')
         }
     }
     

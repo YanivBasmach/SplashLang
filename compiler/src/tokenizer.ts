@@ -170,8 +170,8 @@ export interface Tokenizer {
 export class BaseTokenizer implements Tokenizer {
 
     pos: number = 0;
-    line: number = 0;
-    column: number = 0;
+    line: number = 1;
+    column: number = 1;
     currentStringSegment?: ExpressionSegment
 
     constructor(private input: string) {
@@ -196,7 +196,7 @@ export class BaseTokenizer implements Tokenizer {
             case '\n':
                 let t = new Token(TokenType.line_end, '\n', TextRange.oneChar(start))
                 this.line++;
-                this.column = 0;
+                this.column = 1;
                 return t;
             case '"':
             case '\'':

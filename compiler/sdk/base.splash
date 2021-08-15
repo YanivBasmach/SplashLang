@@ -12,7 +12,7 @@ native class object {
 
     native operator int compare(this other)
 
-    operator string plus(string str) {
+    operator string add(string str) {
         return "{this}{str}"
     }
 

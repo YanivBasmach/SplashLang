@@ -31,8 +31,22 @@ native class array<T> {
         add(0, value)
     }
 
+    iterator T[]() {
+        return this
+    }
+
+    string join(string separator) {
+        var str = ""
+        for (var item : this) {
+            str += item.toString() + separator
+        }
+        if (!str.isEmpty) {
+            str -= separator.length
+        }
+        return str
+    }
+
     /*
-    native iterator T[]()
 
     N[] map<N>(function(T): N mapper) {
         var newArr = []<N>
@@ -70,17 +84,6 @@ native class array<T> {
             result = reducer(result, item)
         }
         return result
-    }
-
-    string join(string separator) {
-        var str = ""
-        for (var item : this) {
-            str += item.toString() + separator
-        }
-        if (!str.isEmpty) {
-            str -= separator.length
-        }
-        return str
     }
     */
     

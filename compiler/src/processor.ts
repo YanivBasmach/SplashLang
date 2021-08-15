@@ -66,6 +66,14 @@ export class Processor {
         }
     }
 
+    declareVariable(name: Token, type: SplashType) {
+        if (this.getVariable(name.value)) {
+            this.error(name.range, "Duplicate variable " + name.value + "!")
+        } else {
+            this.addVariable(name, type)
+        }
+    }
+
     getTypeByName(name: string) {
         let tp = this.getTypeParam(name)
         if (tp) return tp

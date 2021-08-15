@@ -1,9 +1,9 @@
 native class float {
     native static float parse(string value)
 
-    native operator float plus(int | float other)
+    native operator float add(int | float other)
 
-    native operator float minus(int | float other)
+    native operator float sub(int | float other)
 
     native operator float mul(int | float other)
 

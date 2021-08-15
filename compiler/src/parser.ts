@@ -1,4 +1,4 @@
-import { ElseStatement, NullExpression, ArrayExpression, AssignableExpression, Assignment, BinaryExpression, CallAccess, CallStatement, CodeBlock, Expression, FieldAccess, IfStatement, InvalidExpression, LiteralExpression, MainBlock, RootNode, Statement, UnaryExpression, VarDeclaration, VariableAccess, ModifierList, ParameterNode, FunctionNode, ReturnStatement, ExpressionList, StringExpression, ClassDeclaration, ClassMember, MethodNode, FieldNode, ConstructorParamNode, ConstructorNode, ThisAccess, ASTNode, IndexAccess, TypeParameterNode, RepeatStatement } from "./ast";
+import { ElseStatement, NullExpression, ArrayExpression, AssignableExpression, Assignment, BinaryExpression, CallAccess, CallStatement, CodeBlock, Expression, FieldAccess, IfStatement, InvalidExpression, LiteralExpression, MainBlock, RootNode, Statement, UnaryExpression, VarDeclaration, VariableAccess, ModifierList, ParameterNode, FunctionNode, ReturnStatement, ExpressionList, StringExpression, ClassDeclaration, ClassMember, MethodNode, FieldNode, ConstructorParamNode, ConstructorNode, ThisAccess, ASTNode, IndexAccess, TypeParameterNode, RepeatStatement, ForStatement } from "./ast";
 import { BasicTypeToken, ComboTypeToken, FunctionTypeToken, SingleTypeToken, TypeToken } from "./oop";
 import { AssignmentOperator, BinaryOperator, Modifier } from "./operators";
 import { DelegateTokenizer, ExpressionSegment, LiteralSegment, Position, StringToken, TextRange, Token, Tokenizer, TokenType } from "./tokenizer";
@@ -353,6 +353,8 @@ export class Parser {
             return new ReturnStatement(label.range, expr)
         } else if (this.isValueNext('repeat')) {
             return this.parseRepeat()
+        } else if (this.isValueNext('for')) {
+            return this.parseFor()
         } else {
             return this.parseVarAccess()
         }
@@ -395,6 +397,22 @@ export class Parser {
             let run = this.parseStatement()
             if (run) {
                 return new RepeatStatement(label, expr, run)
+            }
+        }
+    }
+
+    parseFor(): Statement | undefined {
+        let label = this.next()
+        if (this.expectValue('(') && this.expectValue('var')) {
+            let varname = this.expect(TokenType.identifier)
+            if (varname) {
+                this.expectValue(':')
+                let iter = this.parseExpression()
+                this.expectValue(')')
+                let then = this.parseStatement()
+                if (then) {
+                    return new ForStatement(label, varname, iter, then)
+                }
             }
         }
     }

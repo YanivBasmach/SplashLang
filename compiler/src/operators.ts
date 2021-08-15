@@ -3,8 +3,8 @@ import { SplashBoolean, SplashType } from "./types";
 
 
 export enum BinaryOperator {
-    plus = '+',
-    minus = '-',
+    add = '+',
+    sub = '-',
     mul = '*',
     div = '/',
     mod = '%',
@@ -23,6 +23,17 @@ export enum BinaryOperator {
     and = '&&',
     or = '||',
     default = '~'
+}
+
+export function isBidirectional(op: BinaryOperator) {
+    switch (op) {
+        case BinaryOperator.add:
+        case BinaryOperator.mul:
+        case BinaryOperator.equals:
+        case BinaryOperator.ne:
+            return true
+    }
+    return false
 }
 
 export function getOpMethodName(op: BinaryOperator) {

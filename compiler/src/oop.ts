@@ -1,6 +1,6 @@
 import { ExpressionList, ModifierList, ParameterNode, RootNode } from "./ast";
 import { GeneratedBlock, GeneratedExpression, SplashScript } from "./generator";
-import { BinaryOperator, Modifier, transformOperatorResult, UnaryOperator } from "./operators";
+import { BinaryOperator, isBidirectional, Modifier, transformOperatorResult, UnaryOperator } from "./operators";
 import { Returned, Runtime } from "./runtime";
 import { BaseTokenizer, TextRange, Token } from "./tokenizer";
 import { DummySplashType, SplashClass, SplashClassType, SplashFunctionType, SplashOptionalType, SplashParameterizedType, SplashPrimitive, SplashString, SplashType } from "./types";
@@ -315,12 +315,14 @@ export class Value {
         if (acc) {
             return acc.invoke(runtime, this.type, this, new Value(SplashString.instance, field))
         }
-        if (this.isPrimitive) {
-            return Value.null
-        }
+        
         let getterMethod = this.type.getMethods(field)
         if (getterMethod.length > 0) {
             return getterMethod[0].invoke(runtime, this.type, this)
+        }
+
+        if (this.isPrimitive) {
+            return Value.null
         }
         
         return this.inner[field]
@@ -353,6 +355,13 @@ export class Value {
     invokeBinOperator(runtime: Runtime, op: BinaryOperator, other: Value): Value {
         let method = this.type.getBinaryOperation(op,other.type)
         if (!method) {
+            if (isBidirectional(op)) {
+                method = other.type.getBinaryOperation(op,this.type)
+                if (method) {
+                    let res = method.invoke(runtime, this.type, other, this)
+                    return transformOperatorResult(res, method.name, op)
+                }
+            }
             console.log('did not find bin operator',this,op,other)
             return Value.dummy
         }
@@ -362,6 +371,11 @@ export class Value {
 
     invokeUnaryOperator(runtime: Runtime, op: UnaryOperator): Value {
         let method = this.type.getUnaryOperation(op)
+        return method?.invoke(runtime, this.type, this) || Value.dummy
+    }
+
+    invokeIterator(runtime: Runtime): Value {
+        let method = this.type.getIterator()
         return method?.invoke(runtime, this.type, this) || Value.dummy
     }
 

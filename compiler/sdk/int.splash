@@ -3,11 +3,11 @@ native class int {
 
     native static int parse(string value)
 
-    native operator int plus(int other)
-    native operator float plus(float other)
+    native operator int add(int other)
+    native operator float add(float other)
 
-    native operator int minus(int other)
-    native operator float minus(float other)
+    native operator int sub(int other)
+    native operator float sub(float other)
 
     native operator int mul(int other)
     native operator float mul(float other)

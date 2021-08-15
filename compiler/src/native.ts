@@ -1,7 +1,7 @@
 import { Method, Parameter, Value } from "./oop";
 import { Modifier } from "./operators";
 import { Runtime, SplashRuntimeError } from "./runtime";
-import { BuiltinTypes, SplashBoolean, SplashClass, SplashClassType, SplashInt, SplashString, SplashType } from "./types";
+import { BuiltinTypes, SplashArray, SplashBoolean, SplashClass, SplashClassType, SplashInt, SplashString, SplashType } from "./types";
 import { ModifierList } from "./ast";
 import { Processor } from "./processor";
 
@@ -169,29 +169,33 @@ export class NativeMethods {
         return new Value(SplashString.instance,val.inner.toUpperCase())
     }
 
-    @NativeMethod('string')
+    @NativeMethod('string[]')
     string_chars(r: Runtime, val: Value) {
-        return new Value(SplashString.instance,val.inner.split(""))
+        return new Value(SplashArray.of(SplashString.instance),val.inner.split(""))
     }
 
+    @NativeMethod('string',['int chars'],[Modifier.operator])
+    string_sub(r: Runtime, val: Value, chars: Value) {
+        return new Value(SplashString.instance,val.inner.substring(0,val.inner.length - chars.inner))
+    }
 
     // INT
     @NativeMethod('int',['int other'],[Modifier.operator])
-    int_plus(r: Runtime, val: Value, other: Value) {
+    int_add(r: Runtime, val: Value, other: Value) {
         return new Value(BuiltinTypes.int,val.inner + other.inner)
     }
-    @NativeMethod('float',['float other'],[Modifier.operator],'plus')
-    int_fplus(r: Runtime, val: Value, other: Value) {
+    @NativeMethod('float',['float other'],[Modifier.operator],'add')
+    int_fadd(r: Runtime, val: Value, other: Value) {
         return new Value(BuiltinTypes.float,val.inner + other.inner)
     }
 
     @NativeMethod('int',['int other'],[Modifier.operator])
-    int_minus(r: Runtime, val: Value, other: Value) {
+    int_sub(r: Runtime, val: Value, other: Value) {
         return new Value(BuiltinTypes.int,val.inner - other.inner)
     }
 
-    @NativeMethod('float',['float other'],[Modifier.operator],'minus')
-    int_fminus(r: Runtime, val: Value, other: Value) {
+    @NativeMethod('float',['float other'],[Modifier.operator],'sub')
+    int_fsub(r: Runtime, val: Value, other: Value) {
         return new Value(BuiltinTypes.float,val.inner - other.inner)
     }
 
@@ -242,12 +246,12 @@ export class NativeMethods {
 
     // FLOAT
     @NativeMethod('float',['int | float other'],[Modifier.operator])
-    float_plus(r: Runtime, val: Value, other: Value) {
+    float_add(r: Runtime, val: Value, other: Value) {
         return new Value(BuiltinTypes.float,val.inner + other.inner)
     }
 
     @NativeMethod('float',['int | float other'],[Modifier.operator])
-    float_minus(r: Runtime, val: Value, other: Value) {
+    float_sub(r: Runtime, val: Value, other: Value) {
         return new Value(BuiltinTypes.float,val.inner - other.inner)
     }
     

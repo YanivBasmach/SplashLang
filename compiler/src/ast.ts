@@ -1,9 +1,9 @@
-import { GenArrayCreation, GenAssignableExpression, GenAssignment, GenCall, GenCallAccess, GenClassDecl, GenConstExpression, Generated, GeneratedBinary, GeneratedBlock, GeneratedExpression, GeneratedLiteral, GeneratedReturn, GeneratedStatement, GeneratedUnary, GenFieldAccess, SplashFunction, GenIfStatement, GenStringLiteral, GenVarAccess, GenVarDeclaration, SplashScript, GenIndexAccess, GeneratedRepeat } from "./generator";
+import { GenArrayCreation, GenAssignableExpression, GenAssignment, GenCall, GenCallAccess, GenClassDecl, GenConstExpression, Generated, GeneratedBinary, GeneratedBlock, GeneratedExpression, GeneratedLiteral, GeneratedReturn, GeneratedStatement, GeneratedUnary, GenFieldAccess, SplashFunction, GenIfStatement, GenStringLiteral, GenVarAccess, GenVarDeclaration, SplashScript, GenIndexAccess, GeneratedRepeat, GeneratedFor } from "./generator";
 import { ExpressionSegment, StringToken, TextRange, Token, TokenType } from "./tokenizer";
 import { Parser } from "./parser";
 import { Constructor, CtorParameter, Field, Member, Method, Parameter, TypeToken, Value } from "./oop";
 import { Processor } from "./processor";
-import { AssignmentOperator, BinaryOperator, getActualOpReturnType, getOpMethodName, Modifier, UnaryOperator } from "./operators";
+import { AssignmentOperator, BinaryOperator, getActualOpReturnType, getOpMethodName, isBidirectional, Modifier, UnaryOperator } from "./operators";
 import { BuiltinTypes, DummySplashType, SplashArray, SplashBoolean, SplashClass, SplashClassType, SplashComboType, SplashFloat, SplashFunctionType, SplashInt, SplashOptionalType, SplashParameterizedType, SplashString, SplashType, TypeParameter } from "./types";
 
 
@@ -108,7 +108,7 @@ export class VarDeclaration extends Statement {
         return new GenVarDeclaration(this.name.value,this.init?.generate(proc))
     }
     process(proc: Processor): void {
-        proc.addVariable(this.name, this.init ? this.init.getResultType(proc) : SplashClass.object)
+        proc.declareVariable(this.name, this.init ? this.init.getResultType(proc) : SplashClass.object)
     }
 
     
@@ -218,6 +218,9 @@ export class BinaryExpression extends Expression {
         let leftType = this.left.getResultType(proc)
         let rightType = this.right.getResultType(proc)
         let binop = leftType.getBinaryOperation(this.op.value as BinaryOperator, rightType)
+        if (!binop && isBidirectional(this.op.value as BinaryOperator)) {
+            binop = rightType.getBinaryOperation(this.op.value as BinaryOperator, leftType)
+        }
         if (binop) {
             return getActualOpReturnType(this.op.value as BinaryOperator,binop.retType)
         }
@@ -348,11 +351,11 @@ export class Assignment extends Statement {
                 proc.error(this.expression.range, "Expression of type " + val + " cannot be assigned to " + v)
             }
         } else {
-            let binop = this.op.value.substring(1) as BinaryOperator
+            let binop = this.op.value.substring(0,this.op.value.length - 1) as BinaryOperator
             let opm = v.getBinaryOperation(binop, val)
             if (opm) {
-                if (!opm.type.canAssignTo(v)) {
-                    proc.error(this.op.range, "Expression of type " + val + " cannot be assigned by applying operator " + this.op.value + " with " + v)
+                if (!opm.retType.canAssignTo(v)) {
+                    proc.error(this.op.range, "Expression of type " + val + " cannot be assigned by applying operator " + this.op.value + " with " + v + " (result is " + opm.retType + ")")
                 }
             } else {
                 proc.error(this.op.range, "Expression of type " + val + " cannot be applied to " + v + " with " + this.op.value)
@@ -758,6 +761,9 @@ export class MethodNode extends ClassMember {
             if (this.params.length > 0) { // todo: validate return type is array
                 proc.error(this.modifiers.get(Modifier.iterator).range, "Iterator methods should not take any parameters")
             }
+            if (!proc.resolveType(this.retType).canAssignTo(SplashArray.instance)) {
+                proc.error(this.retType.range, "Iterator methods must return an array")
+            }
         } else if (this.modifiers.has(Modifier.get)) {
             if (this.params.length > 0) {
                 proc.error(this.modifiers.get(Modifier.get).range, "Getter methods should not take any parameters")
@@ -847,20 +853,24 @@ export class ClassDeclaration extends ASTNode {
     index(proc: Processor) {
         if (!this.modifiers.has(Modifier.native)) {
             proc.types.push(this.type)
+
+            let index = 0;
+            for (let tp of this.typeParams) {
+                tp.init(proc,index)
+                if (tp.param) {
+                    this.type.typeParams.push(tp.param)
+                }
+                index++;
+            }
         }
 
-        let index = 0;
-        for (let tp of this.typeParams) {
-            tp.init(proc,index)
-            if (tp.param) {
-                this.type.typeParams.push(tp.param)
-            }
-            index++;
-        }
+        proc.currentClass = this.type
 
         for (let m of this.body) {
             m.index(proc, this.type)
         }
+
+        proc.currentClass = undefined
     }
 
     process(proc: Processor): void {
@@ -870,9 +880,6 @@ export class ClassDeclaration extends ASTNode {
         let uniqueTP: string[] = []
         for (let tp of this.typeParams) {
             tp.process(proc)
-            if (tp.param) {
-                this.type.typeParams.push(tp.param)
-            }
             if (uniqueTP.includes(tp.base.value)) {
                 proc.error(tp.base.range,'Duplicate type parameter')
             } else {
@@ -1072,8 +1079,37 @@ export class RepeatStatement extends Statement {
         if (!type.canAssignTo(SplashInt.instance)) {
             proc.error(this.expr.range,"Int expression expected")
         }
+        proc.push()
+        this.run.process(proc)
+        proc.pop()
     }
     generate(proc: Processor): GeneratedStatement {
         return new GeneratedRepeat(this.expr.generate(proc),this.run.generate(proc))
     }
+}
+
+export class ForStatement extends Statement {
+    constructor(label: Token, public varname: Token, public iter: Expression, public then: Statement) {
+        super('for',label.range)
+    }
+
+    process(proc: Processor): void {
+        proc.push()
+        let iterType = this.iter.getResultType(proc)
+        let iterator = iterType.getIterator()
+        if (!iterator) {
+            proc.error(this.iter.range,"This value is not iterable!")
+        } else {
+            if (iterator.retType.canAssignTo(SplashArray.instance) && iterator.retType instanceof SplashParameterizedType) {
+                let elemType = iterator.retType.params[0]
+                proc.declareVariable(this.varname,elemType)
+            }
+        }
+        this.then.process(proc)
+        proc.pop()
+    }
+    generate(proc: Processor): GeneratedStatement {
+        return new GeneratedFor(this.varname.value,this.iter.generate(proc),this.then.generate(proc))
+    }
+    
 }
