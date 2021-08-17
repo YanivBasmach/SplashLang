@@ -1,0 +1,19 @@
+{
+	"name": "splash-server",
+	"description": "Splash Language Server",
+	"version": "1.0.0",
+	"author": "YanivBasmach",
+	"license": "MIT",
+	"engines": {
+		"node": "*"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/YanivBasmach/SplashLang"
+	},
+	"dependencies": {
+		"vscode-languageserver": "^7.0.0",
+		"vscode-languageserver-textdocument": "^1.0.1"
+	},
+	"scripts": {}
+}

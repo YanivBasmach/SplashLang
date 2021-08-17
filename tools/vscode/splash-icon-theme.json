@@ -1,0 +1,10 @@
+{
+	"iconDefinitions": {
+		"_script":{
+			"iconPath": "./assets/file_icon.svg"
+		}
+	},
+	"languageIds": {
+		"splash":"_script"
+	}
+}

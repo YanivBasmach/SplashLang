@@ -1,0 +1,53 @@
+{
+	"autoCloseBefore": ";:.,=}])> \n\t",
+	"autoClosingPairs": [
+		[
+			"(",
+			")"
+		],
+		[
+			"[",
+			"]"
+		],
+		[
+			"{",
+			"}"
+		]
+	],
+	"brackets": [
+		[
+			"(",
+			")"
+		],
+		[
+			"[",
+			"]"
+		],
+		[
+			"{",
+			"}"
+		]
+	],
+	"surroundingPairs": [
+		[
+			"(",
+			")"
+		],
+		[
+			"[",
+			"]"
+		],
+		[
+			"{",
+			"}"
+		]
+	],
+	"comments": {
+		"blockComment": [
+			"/*",
+			"*/"
+		],
+		"lineComment": "#"
+	},
+	"wordPattern": "[a-zA-Z_][a-zA-Z_0-9]*"
+}
