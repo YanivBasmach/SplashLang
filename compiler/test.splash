@@ -17,7 +17,7 @@ main {
     print(5 // 2)
     print(4 ** 2 + 1)
     print(0.1 + 0.2)
-    print("Hello " * 5)
+    print("-" * 20)
 
     var p = Person(name, age)
 
@@ -30,7 +30,7 @@ main {
     arr.add(8)
     arr.add(12)
 
-    print("{arr.join(" and ")} elem at 1: {arr[1]}")
+    print("{arr.join(" and ")}. elem at 1: {arr[1]}")
     arr.pop()
     print(arr)
     print("Empty? {arr.isEmpty}")
@@ -51,5 +51,9 @@ class Person {
 
     sayHi(string to) {
         print("{name} says hi to {to}")
+    }
+
+    toString() {
+        return "{name} ({age})"
     }
 }

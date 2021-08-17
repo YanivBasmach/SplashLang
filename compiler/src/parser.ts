@@ -715,7 +715,7 @@ export class Parser {
                 if (s instanceof ExpressionSegment) {
                     return new Parser(this.file,new DelegateTokenizer(s.tokens)).parseExpression()
                 } else {
-                    return new LiteralExpression(Token.dummy('"' + (s as LiteralSegment).value + '"'))
+                    return new LiteralExpression(new Token(TokenType.string,s.toString(),TextRange.end))
                 }
             }))
         } else if (this.isNext(TokenType.identifier)) {

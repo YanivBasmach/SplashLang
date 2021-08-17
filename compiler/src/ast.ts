@@ -245,7 +245,7 @@ export class UnaryExpression extends Expression {
         if (uop) {
             return uop.retType
         }
-        proc.error(this.op.range, "Operator " + this.op.value + " cannot be applied to " + type)
+        proc.error(this.op.range, "Unary operator " + this.op.value + " cannot be applied to " + type)
         return SplashClass.object
     }
     generate(proc: Processor): GeneratedExpression {

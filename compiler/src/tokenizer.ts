@@ -296,7 +296,7 @@ export class BaseTokenizer implements Tokenizer {
                 break
             }
         }
-        return new StringToken(segments.join(''),segments, {start, end: this.getPos()})
+        return new StringToken('string(' + segments.join('') + ')',segments, {start, end: this.getPos()})
     }
 
     readNumber(start: Position, first: string) {

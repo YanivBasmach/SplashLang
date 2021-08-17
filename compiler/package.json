@@ -1,5 +1,5 @@
 {
-  "name": "splash-compiler",
+  "name": "@yanivbasmach/splash-compiler",
   "version": "1.0.0",
   "description": "A compiler for the Splash language written in typescript",
   "main": "./out/index.js",
@@ -22,5 +22,9 @@
     "@types/prompt-sync": "^4.1.1",
     "fs": "0.0.1-security",
     "prompt-sync": "^4.2.0"
+  },
+  "publishConfig": {
+    "registry":"https://npm.pkg.github.com",
+    "access": "restricted"
   }
 }
